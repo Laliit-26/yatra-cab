@@ -18,8 +18,18 @@ import { appConfig } from '../config/loadEnv.js';
  * hour per driver for data nobody reads at that resolution.
  */
 const DB_WRITE_EVERY_MS = 10000;
+// SCALING NOTE: `lastWriteAt` is in-process memory. On multiple instances each
+// process keeps its own map, so the per-driver throttle fires once per instance
+// rather than once globally. The consequence is a higher DB write rate, not
+// data loss. To fix: replace this Map with a Redis hash (HSET/HGET) via
+// ioredis, then also install @socket.io/redis-adapter so room broadcasts work
+// across instances (a `ride:join` on instance A must reach a driver on instance B).
 const lastWriteAt = new Map(); // driverId → epoch ms of last persisted fix
 export function initSockets(server) {
+  // SCALING NOTE: Socket.io defaults to the in-process adapter — events emitted
+  // on one instance are not broadcast to sockets connected to other instances.
+  // For horizontal scaling install @socket.io/redis-adapter and pass it here:
+  //   io.adapter(createAdapter(pubClient, subClient));
   const io = new Server(server, {
     cors: { origin: appConfig.clientUrls, credentials: true },
   });

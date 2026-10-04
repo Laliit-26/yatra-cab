@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "YatraCab customer + driver API (modular monolith + Socket.io).",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

@@ -4,6 +4,7 @@ import { connectDB, disconnectDB, logger, needsSeeding, seedDatabase } from '@ya
 import { createApp } from './app.js';
 import { appConfig } from './config/loadEnv.js';
 import { initSockets } from './sockets/index.js';
+import { startCronJobs } from './cron/index.js';
 
 async function bootstrap() {
   await connectDB();
@@ -27,6 +28,7 @@ async function bootstrap() {
   const app = createApp();
   const server = http.createServer(app);
   initSockets(server);
+  const stopCrons = startCronJobs();
 
   server.listen(appConfig.port, () => {
     logger.info(`server-app (customer + driver) listening on http://localhost:${appConfig.port}`);
@@ -34,6 +36,7 @@ async function bootstrap() {
 
   const shutdown = async (signal) => {
     logger.info(`${signal} received — shutting down server-app…`);
+    stopCrons();
     server.close(async () => {
       await disconnectDB();
       process.exit(0);

@@ -124,6 +124,9 @@ export default function RideDetail() {
               </CardBody>
             </Card>
 
+            {/* Celebration moment when the driver is locked in */}
+            {ride.status === 'confirmed' && <ConfirmedBanner />}
+
             {/* State-specific panels */}
             {ride.status === 'pending_payment' && <PaymentPanel ride={ride} onDone={refetchAll} />}
             {/* TESTING — quoted rides confirm without an online payment, so this
@@ -694,5 +697,30 @@ function CancelledPanel({ ride }) {
         <Link to="/"><Button variant="secondary" className="mt-4 w-full">Book another ride</Button></Link>
       </CardBody>
     </Card>
+  );
+}
+
+// Celebratory confirmation banner — the single moment the rider has been
+// waiting for. Warm gradient, animated entry, sparkles.
+function ConfirmedBanner() {
+  const t = useTranslations('RideDetail');
+  return (
+    <div className="relative overflow-hidden rounded-2xl bg-brand-gradient p-5 text-accent-fg shadow-glow animate-scale-in">
+      {/* Decorative mandala rings */}
+      <span className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full border-2 border-white/15" />
+      <span className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full border border-white/10" />
+      <div className="relative flex items-center gap-4">
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur">
+          <CheckCircle2 size={28} className="text-white" />
+        </span>
+        <div>
+          <p className="flex items-center gap-1.5 font-display text-xl font-bold">
+            <Sparkles size={16} className="text-amber-300" />
+            {t('confirmedTitle')}
+          </p>
+          <p className="mt-0.5 text-sm text-white/85">{t('confirmedText')}</p>
+        </div>
+      </div>
+    </div>
   );
 }

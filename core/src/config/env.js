@@ -51,7 +51,12 @@ export const env = {
     // Demo mode: skip email entirely, return the code in the API response and
     // accept the fixed devOtp — used on hosts (e.g. Render free) that block
     // outbound SMTP so email OTP can't be delivered.
+    // SECURITY: hard-block if someone sets DEMO_OTP=true in production — that
+    // would let any caller authenticate with 123456, including seeded admins.
     get demoMode() {
+      if (process.env.DEMO_OTP === 'true' && process.env.NODE_ENV === 'production') {
+        throw new Error('FATAL: DEMO_OTP=true is not allowed in NODE_ENV=production. Remove it from your deployment config.');
+      }
       return process.env.DEMO_OTP === 'true';
     },
     get ttlMs() {

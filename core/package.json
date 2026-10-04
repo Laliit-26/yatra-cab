@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Shared backend core for YatraCab — models, auth, services, utils.",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js"

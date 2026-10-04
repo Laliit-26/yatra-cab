@@ -23,13 +23,17 @@ export default function Book() {
   const t = useTranslations('Book');
   const tMap = useTranslations('MapPicker');
   const navigate = useNavigate();
-  // Deep-link presets from the home tiles: /book?mode=bidding&trip=one_way&type=seat_share
+  // Deep-link presets from the home tiles and destination chips.
   const [params] = useSearchParams();
-  // Every booking is an open request drivers quote on — there is no fixed-fare
-  // path in the UI any more, so the rider never picks a vehicle or sees a price.
-  const mode = 'bidding';
   const [pickup, setPickup] = useState(null); // { address, lat, lng }
-  const [drop, setDrop] = useState(null);
+  // A destination chip from Home arrives as name + coordinates, so the form is
+  // ready to request quotes the moment a pickup is set.
+  const [drop, setDrop] = useState(() => {
+    const address = params.get('drop');
+    const lat = Number(params.get('dlat'));
+    const lng = Number(params.get('dlng'));
+    return address && Number.isFinite(lat) && Number.isFinite(lng) ? { address, lat, lng } : null;
+  });
   // Most riders take a single trip, so one-way is the default.
   const [tripType, setTripType] = useState(params.get('trip') === 'round_trip' ? 'round_trip' : 'one_way');
   const [scheduledAt, setScheduledAt] = useState(defaultWhen());
@@ -67,6 +71,11 @@ export default function Book() {
         pickup,
         notes: notes.trim() || undefined,
       };
+      // Transport is additive. It used to be an either/or with the drop, so
+      // declaring a train silently posted a ride with no destination and the
+      // server rejected it — telling the rider to choose a drop they could see
+      // filled in on screen.
+      base.drop = drop;
       if (transportType !== 'none') {
         base.transport = {
           type: transportType,
@@ -74,9 +83,7 @@ export default function Book() {
           scheduledAt: transportAt ? new Date(transportAt).toISOString() : undefined,
         };
       }
-      else base.drop = drop;
-      const payload = mode === 'bidding' ? { ...base, biddingWindowMins: Number(biddingWindowMins) } : base;
-      return mode === 'fixed' ? api.post('/customer/rides/fixed', payload) : api.post('/customer/rides/alert', payload);
+      return api.post('/customer/rides/alert', { ...base, biddingWindowMins: Number(biddingWindowMins) });
     },
     onSuccess: (res) => {
       toast.success(t('posted'));
@@ -151,7 +158,7 @@ export default function Book() {
               ) : quote ? (
                 <>
                   <span className="flex items-center gap-1.5 font-medium text-accent"><RouteIcon size={15} /> {quote.distanceKm} km</span>
-                  <span className="flex items-center gap-1.5 text-ink-500"><Clock size={15} /> ~{Math.round(quote.estimatedMins / 60) || 1}h {quote.estimatedMins % 60}m</span>
+                  <span className="flex items-center gap-1.5 text-ink-500"><Clock size={15} /> ~{Math.floor(quote.estimatedMins / 60)}h {quote.estimatedMins % 60}m</span>
                 </>
               ) : null}
             </div>
@@ -179,7 +186,7 @@ export default function Book() {
               <Field label={t('passengers')}>
                 <Input type="number" min={1} max={12} value={passengers} onChange={(e) => setPassengers(e.target.value)} />
               </Field>
-              {mode === 'bidding' && (
+              {(
                 <Field label={t('quoteWindow')} hint={t('quoteWindowHint')}>
                   <Select value={biddingWindowMins} onChange={(e) => setBiddingWindowMins(e.target.value)}>
                     <option value={15}>{t('minutes15')}</option>

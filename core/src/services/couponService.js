@@ -1,6 +1,6 @@
 import { Coupon } from '../models/Coupon.js';
 import { CouponRedemption } from '../models/CouponRedemption.js';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../utils/apiError.js';
 import { logger } from '../utils/logger.js';
 
 /** What a coupon is worth on a given ride, capped so it can never exceed the fee. */

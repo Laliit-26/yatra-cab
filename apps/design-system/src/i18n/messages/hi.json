@@ -104,7 +104,8 @@
     "todayCount": "आज {count}",
     "payOnlyYourSeat": "पूरी कैब नहीं, सिर्फ़ अपनी सीट का किराया दें।",
     "splitFare": "किराया बाँटें — सिर्फ़ एक सीट का दाम",
-    "dailyRoutesHint": "ड्राइवर हर सुबह रूट डालते हैं"
+    "dailyRoutesHint": "ड्राइवर हर सुबह रूट डालते हैं",
+    "popularDest": "लोकप्रिय गंतव्य"
   },
   "Book": {
     "title": "राइड बुक करें",
@@ -222,7 +223,10 @@
     "subtitle": "आपकी बुकिंग और राइड अलर्ट।",
     "empty": "अभी कोई राइड नहीं",
     "emptyText": "शुरू करने के लिए राइड बुक करें या राइड अलर्ट भेजें।",
-    "allRides": "सभी राइड"
+    "allRides": "सभी राइड",
+    "filterAll": "सभी",
+    "filterActive": "सक्रिय",
+    "filterCompleted": "पूर्ण"
   },
   "RideDetail": {
     "pickup": "पिकअप",
@@ -240,7 +244,9 @@
     "accept": "स्वीकार करें",
     "biddingOpen": "रेट खुले हैं",
     "rideAlert": "राइड अलर्ट",
-    "fixedFare": "तय किराया"
+    "fixedFare": "तय किराया",
+    "confirmedTitle": "राइड की पुष्टि हो गई!",
+    "confirmedText": "आपका ड्राइवर तैयार है। सीट पर बैठें — यात्रा जल्द शुरू होगी।"
   },
   "Profile": {
     "title": "प्रोफ़ाइल",

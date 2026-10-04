@@ -4,6 +4,9 @@
   "private": true,
   "description": "YatraCab — trust-first cab platform for temple/pilgrimage travel (MERN + Socket.io)",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "workspaces": [
     "core",
     "server-app",
@@ -28,10 +31,12 @@
     "test:referral": "node ./scripts/test-referral-engine.mjs",
     "check:i18n": "node ./scripts/check-i18n.mjs",
     "build": "npm run build --workspace @yatracab/customer && npm run build --workspace @yatracab/driver && npm run build --workspace @yatracab/admin",
-    "test:payments": "node ./scripts/test-payments.mjs"
+    "test:payments": "node ./scripts/test-payments.mjs",
+    "test": "vitest run"
   },
   "devDependencies": {
     "concurrently": "^9.0.1",
-    "mongodb-memory-server": "^11.2.0"
+    "mongodb-memory-server": "^11.2.0",
+    "vitest": "^3.2.7"
   }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth, Badge, toast, useTranslations } from '@yatracab/ui';
 import {
@@ -24,9 +24,26 @@ async function reverseGeocode(lat, lng) {
 // The API computes this per departure day; fall back for older payloads.
 const availableSeats = (r) => r?.seatsLeft ?? Math.max(0, (r?.seatsTotal ?? 0) - (r?.seatsBooked ?? 0));
 
+// Popular temple/outstation destinations in Rajasthan.
+// Names are proper nouns — no translation needed. Coordinates travel with the
+// name because Book needs a drop with lat/lng before it will request quotes;
+// sending the name alone would land the rider on an empty form.
+const DESTINATIONS = [
+  { name: 'Pushkar', emoji: '🕉️', lat: 26.4899, lng: 74.5511 },
+  { name: 'Ajmer', emoji: '🌹', lat: 26.4499, lng: 74.6399 },
+  { name: 'Amber Fort', emoji: '🏰', lat: 26.9855, lng: 75.8513 },
+  { name: 'Chittorgarh', emoji: '⚔️', lat: 24.8887, lng: 74.6269 },
+  { name: 'Ranakpur', emoji: '🪨', lat: 25.1152, lng: 73.4875 },
+  { name: 'Nathdwara', emoji: '🪔', lat: 24.933, lng: 73.82 },
+  { name: 'Eklingji', emoji: '🙏', lat: 24.715, lng: 73.742 },
+  { name: 'Bundi', emoji: '🏯', lat: 25.4305, lng: 75.6499 },
+  { name: 'Ranthambore', emoji: '🐅', lat: 26.0173, lng: 76.5026 },
+];
+
 export default function Home() {
   const t = useTranslations('Home');
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [position, setPosition] = useState(null);
   const [address, setAddress] = useState('');
 
@@ -94,6 +111,26 @@ export default function Home() {
       <div className="mx-4 -mt-3 relative z-[600] flex items-center gap-2 rounded-xl bg-ink-900 px-4 py-2.5 text-sm text-white shadow-pop sm:mx-0 sm:mt-4">
         <Sparkles size={15} className="shrink-0 text-amber-300" />
         <span className="truncate">{t('greeting', { name: user?.name ? `, ${user.name.split(' ')[0]}` : '' })}</span>
+      </div>
+
+      {/* Popular destination chips — horizontal scroll, tap to pre-fill Book */}
+      <div className="pt-3">
+        <p className="mb-2.5 px-4 text-[11px] font-semibold uppercase tracking-widest text-ink-400 sm:px-0">
+          {t('popularDest')}
+        </p>
+        <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 sm:px-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          {DESTINATIONS.map((d) => (
+            <button
+              key={d.name}
+              type="button"
+              onClick={() => navigate(`/book?drop=${encodeURIComponent(d.name)}&dlat=${d.lat}&dlng=${d.lng}`)}
+              className="group flex shrink-0 items-center gap-2 rounded-2xl border border-ink-200/80 bg-white px-3.5 py-2 shadow-card transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-soft active:scale-95"
+            >
+              <span className="text-base leading-none">{d.emoji}</span>
+              <span className="text-sm font-medium text-ink-700 group-hover:text-ink-900">{d.name}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Service tiles */}

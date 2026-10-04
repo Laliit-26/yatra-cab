@@ -58,15 +58,15 @@ export async function requestOtp(phone, { email, purpose = 'login' } = {}) {
 
   // Surface the code when in demo mode, or (in dev) when it wasn't delivered.
   const exposeDev = env.otp.demoMode || (!delivered && !env.isProd);
-  if (exposeDev) logger.info(`[otp:dev] ${phone} → ${code}`);
+  if (exposeDev) logger.info(`[otp:dev] ***${String(phone).slice(-4)} → ${code}`);
 
   return { delivered, channel: env.otp.channel, ...(exposeDev ? { devOtp: code } : {}) };
 }
 
 /** Verify a submitted code. Throws ApiError on mismatch/expiry. */
 export async function verifyOtp(phone, code) {
-  // Seeded demo accounts accept the fixed DEV_OTP in dev or demo mode.
-  if ((env.otp.demoMode || !env.isProd) && code === env.otp.devOtp) {
+  // Seeded demo accounts accept the fixed DEV_OTP only in non-production demo mode.
+  if (env.otp.demoMode && !env.isProd && code === env.otp.devOtp) {
     await Otp.deleteOne({ phone });
     return true;
   }

@@ -2,7 +2,7 @@
 
 // Config
 export { env } from './config/env.js';
-export { connectDB, disconnectDB } from './config/db.js';
+export { connectDB, disconnectDB, withTransaction } from './config/db.js';
 
 // Models (importing here also registers them with Mongoose)
 export { User } from './models/User.js';
@@ -29,6 +29,7 @@ export { allow } from './middleware/role.js';
 export { validate } from './middleware/validate.js';
 export { notFound, errorHandler } from './middleware/error.js';
 export { applySecurity, otpRateLimiter, otpAbuseLimiter } from './middleware/security.js';
+export { requestId } from './middleware/requestId.js';
 
 // Utils
 export { ApiError } from './utils/apiError.js';

@@ -6,6 +6,7 @@ import { Ride, RIDE_STATUS } from '../models/Ride.js';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { credit as walletCredit } from './walletService.js';
+import { withTransaction } from '../config/db.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -218,16 +219,18 @@ export async function payCustomerRideCommission(ride) {
         const award = Math.min(share, Math.max(0, customerReferralMonthlyCap - earnedThisMonth));
         if (award > 0) {
           // eslint-disable-next-line no-await-in-loop
-          await ReferralEarning.create({
-            ride: ride._id,
-            beneficiary: upline._id,
-            source: ride.customer,
-            level: i + 1,
-            points: award,
-            commissionBase: commission,
+          await withTransaction(async (session) => {
+            const opts = session ? { session } : {};
+            await ReferralEarning.create([{
+              ride: ride._id,
+              beneficiary: upline._id,
+              source: ride.customer,
+              level: i + 1,
+              points: award,
+              commissionBase: commission,
+            }], opts);
+            await User.updateOne({ _id: upline._id }, { $inc: { points: award } }, opts);
           });
-          // eslint-disable-next-line no-await-in-loop
-          await User.updateOne({ _id: upline._id }, { $inc: { points: award } });
           payouts.push({ user: upline._id, level: i + 1, points: award });
           chainSpent += award;
         }
@@ -243,15 +246,18 @@ export async function payCustomerRideCommission(ride) {
   const cashback = Math.round((commission * customerCashbackPercent) / 100) + (pool - chainSpent);
 
   if (cashback > 0) {
-    await ReferralEarning.create({
-      ride: ride._id,
-      beneficiary: ride.customer,
-      source: ride.customer,
-      level: 0,
-      points: cashback,
-      commissionBase: commission,
+    await withTransaction(async (session) => {
+      const opts = session ? { session } : {};
+      await ReferralEarning.create([{
+        ride: ride._id,
+        beneficiary: ride.customer,
+        source: ride.customer,
+        level: 0,
+        points: cashback,
+        commissionBase: commission,
+      }], opts);
+      await User.updateOne({ _id: ride.customer }, { $inc: { points: cashback } }, opts);
     });
-    await User.updateOne({ _id: ride.customer }, { $inc: { points: cashback } });
   }
 
   if (riderReferral) {

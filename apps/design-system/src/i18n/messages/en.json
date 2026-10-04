@@ -104,7 +104,8 @@
     "todayCount": "{count} today",
     "payOnlyYourSeat": "Pay only for your seat, not the whole cab.",
     "splitFare": "Split the fare — pay for one seat",
-    "dailyRoutesHint": "Drivers publish routes every morning"
+    "dailyRoutesHint": "Drivers publish routes every morning",
+    "popularDest": "Popular destinations"
   },
   "Book": {
     "title": "Book a ride",
@@ -222,7 +223,10 @@
     "subtitle": "Your bookings and Ride Alerts.",
     "empty": "No rides yet",
     "emptyText": "Book a fixed-route ride or post a Ride Alert to get started.",
-    "allRides": "All rides"
+    "allRides": "All rides",
+    "filterAll": "All",
+    "filterActive": "Active",
+    "filterCompleted": "Completed"
   },
   "RideDetail": {
     "pickup": "Pickup",
@@ -240,7 +244,9 @@
     "accept": "Accept",
     "biddingOpen": "Bidding open",
     "rideAlert": "Ride Alert",
-    "fixedFare": "Fixed fare"
+    "fixedFare": "Fixed fare",
+    "confirmedTitle": "Ride confirmed!",
+    "confirmedText": "Your driver is confirmed. Sit back — the journey begins soon."
   },
   "Profile": {
     "title": "Profile",

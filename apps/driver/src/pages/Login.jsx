@@ -26,7 +26,7 @@ export default function Login() {
       roleNoun="Captain"
       brand={{ mark: Navigation, name: 'YatraCab', tagline: 'Captain partner' }}
       hero={hero}
-      demoHint="Demo: 9000000020 (approved) · 9000000023 (pending) · OTP 123456"
+      demoHint="Demo: 9000000020 (approved) · 9000000023 (pending) — code shown on the next screen"
       onAuthed={async (user, token) => {
         await login(user, token);
         navigate('/');

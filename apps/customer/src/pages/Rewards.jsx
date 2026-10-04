@@ -64,23 +64,29 @@ export default function Rewards() {
       <QueryBoundary query={query} loading={<LoadingScreen label="Loading your rewards…" />}>
         {(data) => (
           <>
-            {/* Points balance */}
+            {/* Points balance — mandala decoration + progress ring */}
             <Card className="overflow-hidden">
               <CardBody className="relative bg-brand-gradient text-accent-fg">
                 <div className="absolute inset-0 bg-dotted opacity-20" />
-                <div className="relative">
-                  <p className="flex items-center gap-1.5 text-sm font-medium opacity-90"><Sparkles size={15} /> {t('pointsBalance')}</p>
-                  <p className="mt-1 text-5xl font-bold">{data.points}</p>
-                  <p className="mt-1 text-sm opacity-90">{t('pointWorth')}</p>
-                  <div className="mt-4 flex gap-6 border-t border-white/25 pt-3 text-sm">
-                    <div>
-                      <p className="opacity-80">{t('fromYourRides')}</p>
-                      <p className="text-lg font-semibold">{data.cashbackEarned}</p>
-                    </div>
-                    <div>
-                      <p className="opacity-80">{t('fromYourNetwork')}</p>
-                      <p className="text-lg font-semibold">{data.chainEarned}</p>
-                    </div>
+                {/* Decorative mandala rings (top-right) */}
+                <MandalaDecoration className="pointer-events-none absolute -right-4 -top-4 h-36 w-36 opacity-20" />
+                <div className="relative flex items-start gap-4">
+                  {/* Circular progress ring toward next ₹100 milestone */}
+                  <PointsRing points={data.points} />
+                  <div className="flex-1">
+                    <p className="flex items-center gap-1.5 text-sm font-medium opacity-90"><Sparkles size={15} /> {t('pointsBalance')}</p>
+                    <p className="mt-0.5 font-display text-5xl font-bold leading-none">{data.points}</p>
+                    <p className="mt-1 text-sm opacity-90">{t('pointWorth')}</p>
+                  </div>
+                </div>
+                <div className="relative mt-4 flex gap-6 border-t border-white/25 pt-3 text-sm">
+                  <div>
+                    <p className="opacity-80">{t('fromYourRides')}</p>
+                    <p className="text-lg font-semibold">{data.cashbackEarned}</p>
+                  </div>
+                  <div>
+                    <p className="opacity-80">{t('fromYourNetwork')}</p>
+                    <p className="text-lg font-semibold">{data.chainEarned}</p>
                   </div>
                 </div>
               </CardBody>
@@ -208,5 +214,53 @@ export default function Rewards() {
         )}
       </QueryBoundary>
     </div>
+  );
+}
+
+// SVG progress ring: outer track + arc showing progress to next ₹100.
+// 100 points = ₹100 milestone; modulo so it resets after each full century.
+function PointsRing({ points = 0 }) {
+  const milestone = 100;
+  const pct = Math.min((points % milestone) / milestone, 1);
+  const r = 22;
+  const circ = 2 * Math.PI * r;
+  const dash = pct * circ;
+  return (
+    <svg width="60" height="60" viewBox="0 0 60 60" className="shrink-0" aria-label={`${points} points, ${Math.round(pct * 100)}% to next ₹100 reward`}>
+      {/* Track */}
+      <circle cx="30" cy="30" r={r} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="5" />
+      {/* Progress arc */}
+      <circle
+        cx="30" cy="30" r={r}
+        fill="none"
+        stroke="rgba(255,255,255,0.9)"
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeDasharray={`${dash} ${circ}`}
+        transform="rotate(-90 30 30)"
+      />
+      {/* Rupee symbol in the centre */}
+      <text x="30" y="35" textAnchor="middle" fontSize="13" fontWeight="700" fill="white" fontFamily="system-ui">₹</text>
+    </svg>
+  );
+}
+
+// Layered concentric petal rings — the mandala motif of Rajasthan temples.
+function MandalaDecoration({ className }) {
+  return (
+    <svg viewBox="0 0 120 120" fill="none" className={className} aria-hidden="true">
+      {[48, 36, 24, 12].map((r, i) => (
+        <circle key={r} cx="60" cy="60" r={r} stroke="white" strokeWidth={i % 2 === 0 ? '1.5' : '0.75'} />
+      ))}
+      {/* 8 radiating petals */}
+      {Array.from({ length: 8 }).map((_, i) => {
+        const angle = (i * 45 * Math.PI) / 180;
+        const x1 = 60 + 12 * Math.cos(angle);
+        const y1 = 60 + 12 * Math.sin(angle);
+        const x2 = 60 + 48 * Math.cos(angle);
+        const y2 = 60 + 48 * Math.sin(angle);
+        return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="white" strokeWidth="0.75" />;
+      })}
+    </svg>
   );
 }
