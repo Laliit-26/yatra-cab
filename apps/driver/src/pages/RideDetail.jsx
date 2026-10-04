@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Card, CardHeader, CardBody, Button, Badge, StatusBadge, Avatar, StarRating, StarPicker, Field, Textarea,
+  Card, CardHeader, CardBody, Button, Badge, StatusBadge, Avatar, StarRating, StarPicker, Field, Input, Textarea,
   QueryBoundary, LoadingScreen, toast, inr, formatDateTime, vehicleLabel, RIDE_STATUS_META,
 } from '@yatracab/ui';
 import {
   ArrowLeft, MapPin, Car, CalendarClock, Users, Phone, Play, CheckCircle2, Star, Navigation, Radio, Info, Wallet, Lock,
+  ShieldCheck, Send, RotateCw,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { getSocket } from '../socket.js';
@@ -21,7 +22,7 @@ export default function RideDetail() {
   const refetch = () => { query.refetch(); qc.invalidateQueries({ queryKey: ['driver-rides'] }); qc.invalidateQueries({ queryKey: ['driver-active'] }); };
 
   const mutate = (path, ok) =>
-    useMutation({ mutationFn: () => api.patch(`/driver/rides/${id}/${path}`), onSuccess: () => { toast.success(ok); refetch(); }, onError: (e) => toast.error(e.message) });
+    useMutation({ mutationFn: (otp) => api.patch(`/driver/rides/${id}/${path}`, { otp }), onSuccess: () => { toast.success(ok); refetch(); }, onError: (e) => toast.error(e.message) });
 
   const start = mutate('start', 'Ride started — drive safe!');
   const complete = mutate('complete', 'Ride completed');
@@ -116,12 +117,29 @@ export default function RideDetail() {
 
               {/* Actions per status */}
               {ride.status === 'confirmed' && (
-                <Button size="lg" className="w-full" icon={Play} loading={start.isPending} onClick={() => start.mutate()}>Start ride</Button>
+                <OtpGate
+                  rideId={id}
+                  phase="start"
+                  title="Start code"
+                  subtitle="Send the code to your passenger, then type what they read back."
+                  action={start}
+                  actionLabel="Start ride"
+                  actionIcon={Play}
+                />
               )}
               {ride.status === 'ongoing' && (
                 <>
                   <LocationSharer rideId={id} />
-                  <Button size="lg" variant="success" className="w-full" icon={CheckCircle2} loading={complete.isPending} onClick={() => complete.mutate()}>Complete ride & collect cash</Button>
+                  <OtpGate
+                    rideId={id}
+                    phase="end"
+                    title="Drop-off code"
+                    subtitle="The passenger shares this once the fare matches what was agreed."
+                    action={complete}
+                    actionLabel="Complete ride & collect cash"
+                    actionIcon={CheckCircle2}
+                    actionVariant="success"
+                  />
                 </>
               )}
               {ride.status === 'completed' && <RateCustomer ride={ride} onRated={refetch} />}
@@ -130,6 +148,109 @@ export default function RideDetail() {
         }
       </QueryBoundary>
     </div>
+  );
+}
+
+/**
+ * A checkpoint the driver cannot pass alone: the rider is sent a six-digit code
+ * and reads it back. Used at both ends of the trip — proving the right person
+ * got in, and that the fare was what everyone agreed before the ride closes.
+ *
+ * The resend countdown mirrors the server's own cooldown; the server is what
+ * actually enforces it, since every send pings the rider's phone.
+ */
+function OtpGate({ rideId, phase, title, subtitle, action, actionLabel, actionIcon, actionVariant = 'primary' }) {
+  const [code, setCode] = useState('');
+  const [sent, setSent] = useState(false);
+  const [devCode, setDevCode] = useState(null);
+  const [left, setLeft] = useState(0);
+  const timer = useRef(null);
+
+  useEffect(() => () => clearInterval(timer.current), []);
+
+  const countdown = (secs) => {
+    setLeft(secs);
+    clearInterval(timer.current);
+    timer.current = setInterval(
+      () => setLeft((s) => (s <= 1 ? (clearInterval(timer.current), 0) : s - 1)),
+      1000
+    );
+  };
+
+  const send = useMutation({
+    mutationFn: () => api.post(`/driver/rides/${rideId}/otp/${phase}/send`),
+    onSuccess: (res) => {
+      setSent(true);
+      setDevCode(res.devCode || null);
+      countdown(res.retryAfter || 60);
+      toast.success('Code sent to your passenger');
+    },
+    onError: (e) => {
+      // A 429 means it went out moments ago — show the gate anyway so the
+      // driver can enter the code the rider is already holding, and run the
+      // countdown down the server's remaining cooldown rather than inviting a
+      // resend that would only fail again.
+      setSent(true);
+      if (e.details?.retryAfter) countdown(e.details.retryAfter);
+      toast.error(e.message);
+    },
+  });
+
+  const ready = code.trim().length === 6;
+
+  return (
+    <Card>
+      <CardHeader title={title} subtitle={subtitle} icon={ShieldCheck} />
+      <CardBody className="space-y-3">
+        {!sent ? (
+          <Button className="w-full" size="lg" icon={Send} loading={send.isPending} onClick={() => send.mutate()}>
+            Send OTP to passenger
+          </Button>
+        ) : (
+          <>
+            <Field label="Six-digit code" hint="from your passenger">
+              <Input
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="••••••"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="text-center text-lg font-semibold tracking-[0.4em]"
+              />
+            </Field>
+
+            {devCode && (
+              <p className="rounded-lg bg-ink-50 px-3 py-2 text-xs text-ink-500">
+                Dev build — the passenger's code is <span className="font-semibold text-ink-800">{devCode}</span>.
+              </p>
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              {left > 0 ? (
+                <span className="text-sm text-ink-400">
+                  Resend in 0:{String(left).padStart(2, '0')}
+                </span>
+              ) : (
+                <Button variant="ghost" icon={RotateCw} loading={send.isPending} onClick={() => send.mutate()}>
+                  Resend code
+                </Button>
+              )}
+              <Button
+                variant={actionVariant}
+                size="lg"
+                icon={actionIcon}
+                disabled={!ready}
+                loading={action.isPending}
+                onClick={() => action.mutate(code)}
+              >
+                {actionLabel}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 

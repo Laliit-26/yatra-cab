@@ -18,6 +18,9 @@ const rideSchema = new mongoose.Schema(
     customer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     driver: { type: mongoose.Schema.Types.ObjectId, ref: 'Driver', index: true },
     route: { type: mongoose.Schema.Types.ObjectId, ref: 'Route' },
+    // Set when the ride came from a driver's published daily route — without
+    // this link there is no way to know how many seats that route has left.
+    dailyRoute: { type: mongoose.Schema.Types.ObjectId, ref: 'DriverRoute', index: true },
 
     mode: { type: String, enum: ['fixed', 'bidding'], required: true },
     // Full private cab vs per-seat carpooling.
@@ -53,8 +56,8 @@ const rideSchema = new mongoose.Schema(
     // than the agreed fare — the ride cannot be closed without it.
     verification: {
       payment: { code: String, verifiedAt: Date },
-      start: { code: String, verifiedAt: Date },
-      end: { code: String, verifiedAt: Date },
+      start: { code: String, verifiedAt: Date, sentAt: Date },
+      end: { code: String, verifiedAt: Date, sentAt: Date },
     },
 
     // Snapshot of trip endpoints (denormalised for dynamic point-to-point trips).
@@ -74,6 +77,7 @@ const rideSchema = new mongoose.Schema(
     feePercent: { type: Number, default: 10 },
     pointsRedeemed: { type: Number, default: 0 }, // cashback points applied
     discount: { type: Number, default: 0 },
+    coupon: { code: String, discount: Number },
 
     status: {
       type: String,

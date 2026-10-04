@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { validate, otpRateLimiter } from '@yatracab/core';
+import { validate, otpRateLimiter, otpAbuseLimiter } from '@yatracab/core';
 import { adminGuard } from '../../middleware/adminGuard.js';
 import { sendOtp, confirmOtp, refresh, logout, me } from './adminAuthController.js';
 
@@ -12,7 +12,7 @@ const verifySchema = Joi.object({
 });
 
 const router = Router();
-router.post('/request-otp', otpRateLimiter, validate(requestSchema), sendOtp);
+router.post('/request-otp', otpAbuseLimiter, otpRateLimiter, validate(requestSchema), sendOtp);
 router.post('/verify-otp', validate(verifySchema), confirmOtp);
 router.post('/refresh', refresh);
 router.post('/logout', logout);

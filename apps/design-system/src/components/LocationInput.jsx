@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MapPin, LocateFixed, Loader2, X, Search, Navigation2, Map } from 'lucide-react';
 import { cn } from '../lib/cn.js';
+import { useTranslations } from '../i18n/I18nProvider.jsx';
 
 // Free geocoding via OpenStreetMap Nominatim (no API key). Respect its usage
 // policy: debounce requests and keep volume low. Swap for Google Places /
@@ -260,6 +261,7 @@ export function LocationInput({
   const [locating, setLocating] = useState(false);
   const timer = useRef(null);
   const abort = useRef(null);
+  const t = useTranslations('Location');
   const boxRef = useRef(null);
   const nearby = useNearby();
   const [around, setAround] = useState([]);
@@ -325,17 +327,17 @@ export function LocationInput({
   };
 
   const useMyLocation = () => {
-    if (!navigator.geolocation) return onError?.('Geolocation is not supported on this device');
+    if (!navigator.geolocation) return onError?.(t('notSupported'));
     setLocating(true);
     getPosition()
       .then(async (pos) => {
         try {
           pick(await reverseGeocode(pos.lat, pos.lng));
         } catch {
-          pick({ address: 'My current location', lat: pos.lat, lng: pos.lng });
+          pick({ address: t('myCurrentLocation'), lat: pos.lat, lng: pos.lng });
         }
       })
-      .catch((err) => onError?.(err?.code === 1 ? 'Location permission denied' : "Couldn't get your location"))
+      .catch((err) => onError?.(err?.code === 1 ? t('permissionDenied') : t('couldNotLocate')))
       .finally(() => setLocating(false));
   };
 
@@ -363,11 +365,11 @@ export function LocationInput({
           <button
             type="button"
             onClick={useMyLocation}
-            title="Use my current location"
+            title={t("myCurrentLocation")}
             className="flex shrink-0 items-center gap-1 rounded-lg bg-accent-soft px-2 py-1 text-xs font-medium text-accent transition-colors hover:brightness-95"
           >
             {locating ? <Loader2 size={13} className="animate-spin" /> : <LocateFixed size={13} />}
-            <span className="hidden sm:inline">{locating ? 'Locating…' : 'Locate'}</span>
+            <span className="hidden sm:inline">{locating ? t('locatingShort') : t('locate')}</span>
           </button>
         )}
       </div>
@@ -376,9 +378,9 @@ export function LocationInput({
         <div className="absolute z-30 mt-1.5 w-full overflow-hidden rounded-xl border border-ink-200 bg-white shadow-pop animate-fade-in">
           {searching ? (
             loading && results.length === 0 ? (
-              <div className="flex items-center gap-2 px-4 py-3 text-sm text-ink-400"><Loader2 size={15} className="animate-spin" /> Searching…</div>
+              <div className="flex items-center gap-2 px-4 py-3 text-sm text-ink-400"><Loader2 size={15} className="animate-spin" /> {t('searching')}</div>
             ) : results.length === 0 ? (
-              <div className="flex items-center gap-2 px-4 py-3 text-sm text-ink-400"><Search size={15} /> No matches — try a different search</div>
+              <div className="flex items-center gap-2 px-4 py-3 text-sm text-ink-400"><Search size={15} /> {t('noMatches')}</div>
             ) : (
               results.map((r, i) => (
                 <button
@@ -416,13 +418,13 @@ export function LocationInput({
               className="mb-2 flex w-full items-center gap-2 rounded-xl border border-ink-200 px-3 py-2.5 text-left text-sm transition-colors hover:border-accent/50"
             >
               <Map size={16} className="shrink-0 text-accent" />
-              <span className="flex-1 font-medium text-ink-800">Adjust on map</span>
-              <span className="text-xs text-ink-400">drag the pin</span>
+              <span className="flex-1 font-medium text-ink-800">{t('adjustOnMap')}</span>
+              <span className="text-xs text-ink-400">{t('dragThePin')}</span>
             </button>
           )}
           {refineNearby && around.length > 0 && (
           <p className="mb-1.5 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-ink-400">
-            <MapPin size={11} /> Or pick a nearby landmark
+            <MapPin size={11} /> {t('orNearbyLandmark')}
           </p>
           )}
           <div className="flex flex-wrap gap-1.5">
@@ -446,32 +448,33 @@ export function LocationInput({
 }
 
 function NearbyPanel({ nearby, allowCurrentLocation, onPick, onUseMyLocation }) {
+  const t = useTranslations('Location');
   const { state, places, load } = nearby;
 
   if (state === 'loading') {
-    return <div className="flex items-center gap-2 px-4 py-3 text-sm text-ink-400"><Loader2 size={15} className="animate-spin" /> Finding places near you…</div>;
+    return <div className="flex items-center gap-2 px-4 py-3 text-sm text-ink-400"><Loader2 size={15} className="animate-spin" /> {t('findingNearby')}</div>;
   }
 
   if (state === 'denied' || (state === 'ready' && places.length === 0)) {
-    return <div className="flex items-center gap-2 px-4 py-3 text-sm text-ink-400"><Search size={15} /> Type at least 2 letters to search</div>;
+    return <div className="flex items-center gap-2 px-4 py-3 text-sm text-ink-400"><Search size={15} /> {t('typeMore')}</div>;
   }
 
   if (state === 'idle') {
     return (
       <button type="button" onClick={load} className="flex w-full items-center gap-2.5 px-4 py-3 text-left hover:bg-ink-50">
         <Navigation2 size={15} className="shrink-0 text-accent" />
-        <span className="text-sm text-ink-700">Use my location to suggest nearby places</span>
+        <span className="text-sm text-ink-700">{t('useMyLocation')}</span>
       </button>
     );
   }
 
   return (
     <>
-      <p className="border-b border-ink-50 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-ink-400">Nearby you</p>
+      <p className="border-b border-ink-50 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-ink-400">{t('nearbyYou')}</p>
       {allowCurrentLocation && (
         <button type="button" onClick={onUseMyLocation} className="flex w-full items-center gap-2.5 border-b border-ink-50 px-4 py-2.5 text-left hover:bg-ink-50">
           <Navigation2 size={15} className="shrink-0 text-accent" />
-          <span className="text-sm font-medium text-ink-700">My current location</span>
+          <span className="text-sm font-medium text-ink-700">{t('myCurrentLocation')}</span>
         </button>
       )}
       {places.map((p) => (

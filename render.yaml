@@ -18,12 +18,10 @@ services:
         value: production
       - key: PAYMENT_PROVIDER
         value: mock
-      # Render's free tier blocks outbound SMTP, so email OTP can't be sent.
-      # DEMO_OTP returns the code in the API response (shown on screen) and
-      # accepts 123456 for the seeded accounts. Remove for a real email/paid setup.
-      - key: DEMO_OTP
-        value: "true"
-      # Seed routes + demo accounts + admin login on first boot (empty DB only).
+      # DEMO_OTP must NOT be set in production — it bypasses OTP verification.
+      # Use a real SMTP (GMAIL_USER + GMAIL_APP_PASSWORD) or a paid OTP provider.
+      # SECURITY: AUTO_SEED creates demo accounts (including an ops admin) on first
+      # boot. Remove or scope it once the real admin account exists in the database.
       - key: AUTO_SEED
         value: "true"
       - key: MONGODB_URI          # mongodb+srv://... (Atlas)
@@ -33,7 +31,7 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: APP_CLIENT_URLS      # customer + driver Netlify sites (public URLs, not secret)
-        value: https://yatra-cab-app.netlify.app,https://yatra-cab-driver.netlify.app
+        value: https://yatracab-rider.netlify.app,https://yatracab-driver.netlify.app
       - key: GMAIL_USER           # optional — for real OTP emails
         sync: false
       - key: GMAIL_APP_PASSWORD   # optional
@@ -51,8 +49,7 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DEMO_OTP             # admin login via demo OTP (SMTP blocked on free tier)
-        value: "true"
+      # DEMO_OTP must NOT be set in production — it bypasses OTP verification.
       - key: MONGODB_URI          # SAME Atlas URI as server-app (shared database)
         sync: false
       - key: JWT_ACCESS_SECRET    # can be independent — admin tokens are separate
@@ -60,4 +57,4 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: ADMIN_CLIENT_URLS    # admin Netlify site (public URL, not secret)
-        value: https://yatra-cab-admin.netlify.app
+        value: https://yatracab-ops.netlify.app

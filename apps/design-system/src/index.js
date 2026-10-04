@@ -15,6 +15,12 @@ export { Avatar, StarRating, StarPicker, PageHeader, Segmented, Logo } from './c
 export { AuthScreen } from './components/AuthScreen.jsx';
 export { LocationInput } from './components/LocationInput.jsx';
 export { VehicleIcon, VEHICLE_META } from './components/VehicleIcon.jsx';
+export { carMarkerHtml, facesLeft, CAR_ASPECT } from './components/carMarker.js';
+export { LanguageSwitcher } from './components/LanguageSwitcher.jsx';
+
+// i18n — namespaced messages, same authoring shape as the Affiliates frontend.
+export { I18nProvider, useTranslations, useLocale } from './i18n/I18nProvider.jsx';
+export { LOCALES, DEFAULT_LOCALE, detectLocale } from './i18n/config.js';
 
 // Re-export toast so apps import from one place.
 export { default as toast, Toaster } from 'react-hot-toast';

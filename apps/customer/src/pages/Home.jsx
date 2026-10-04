@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth, Badge, toast } from '@yatracab/ui';
+import { useAuth, Badge, toast, useTranslations } from '@yatracab/ui';
 import {
-  MapPin, Navigation, ArrowRight, Repeat, Users2, Gavel, Gift, Sparkles, ChevronRight, Car, Route as RouteIcon,
+  MapPin, Navigation, ArrowRight, Repeat, Users2, IndianRupee, Gift, Sparkles, ChevronRight, Car, Route as RouteIcon,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { LiveMap } from '../components/LiveMap.jsx';
 import { OneWayRoad, RoundTripRoad } from '../components/RoadIllustration.jsx';
+import { SeatShareArt } from '../components/SeatShareArt.jsx';
 import { PHOTOS } from '../lib/photos.js';
 
 // Reverse-geocode via OpenStreetMap (same provider as LocationInput).
@@ -20,10 +21,42 @@ async function reverseGeocode(lat, lng) {
   return data.display_name?.split(',').slice(0, 3).map((s) => s.trim()).join(', ');
 }
 
+// The API computes this per departure day; fall back for older payloads.
+const availableSeats = (r) => r?.seatsLeft ?? Math.max(0, (r?.seatsTotal ?? 0) - (r?.seatsBooked ?? 0));
+
+// Popular temple/outstation destinations in Rajasthan.
+// Names are proper nouns — no translation needed. Coordinates travel with the
+// name because Book needs a drop with lat/lng before it will request quotes;
+// sending the name alone would land the rider on an empty form.
+const DESTINATIONS = [
+  { name: 'Pushkar', emoji: '🕉️', lat: 26.4899, lng: 74.5511 },
+  { name: 'Ajmer', emoji: '🌹', lat: 26.4499, lng: 74.6399 },
+  { name: 'Amber Fort', emoji: '🏰', lat: 26.9855, lng: 75.8513 },
+  { name: 'Chittorgarh', emoji: '⚔️', lat: 24.8887, lng: 74.6269 },
+  { name: 'Ranakpur', emoji: '🪨', lat: 25.1152, lng: 73.4875 },
+  { name: 'Nathdwara', emoji: '🪔', lat: 24.933, lng: 73.82 },
+  { name: 'Eklingji', emoji: '🙏', lat: 24.715, lng: 73.742 },
+  { name: 'Bundi', emoji: '🏯', lat: 25.4305, lng: 75.6499 },
+  { name: 'Ranthambore', emoji: '🐅', lat: 26.0173, lng: 76.5026 },
+];
+
 export default function Home() {
+  const t = useTranslations('Home');
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [position, setPosition] = useState(null);
   const [address, setAddress] = useState('');
+
+  // Ambient "cars near me". Polled, not pushed: a rider does not need every
+  // driver's every move, and fanning the fleet to every open app is a lot of
+  // traffic for a decorative layer. The ride they book is pushed over a socket.
+  const nearbyQ = useQuery({
+    queryKey: ['nearby-drivers', position?.lat?.toFixed(3), position?.lng?.toFixed(3)],
+    queryFn: () =>
+      api.get(`/customer/drivers/nearby?lat=${position.lat}&lng=${position.lng}`).then((r) => r.drivers),
+    enabled: position?.lat != null,
+    refetchInterval: 15000,
+  });
 
   // Live data for the tiles.
   const routesQ = useQuery({ queryKey: ['routes'], queryFn: () => api.get('/shared/routes').then((r) => r.routes) });
@@ -49,7 +82,9 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const seatRides = sharesQ.data?.filter((r) => r.bookingType === 'seat_share').length ?? null;
+  const shares = sharesQ.data?.filter((r) => r.bookingType === 'seat_share') ?? [];
+  const bookable = shares.filter((r) => availableSeats(r) > 0);
+  const seatRides = sharesQ.data ? bookable.length : null;
 
   return (
     <div className="-mx-4 -mt-5 animate-fade-in sm:mx-0 sm:mt-0">
@@ -59,23 +94,43 @@ export default function Home() {
           <MapPin size={17} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-ink-400">Your location</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-ink-400">{t('yourLocation')}</p>
           <p className="truncate text-sm font-semibold text-ink-900">
-            {address || (position ? 'Locating…' : 'Enable location to auto-detect')}
+            {address || (position ? t('locating') : t('enableLocation'))}
           </p>
         </div>
         <Link to="/book" className="flex items-center gap-1 rounded-full bg-brand-gradient px-3.5 py-2 text-xs font-semibold text-accent-fg shadow-glow transition-transform hover:scale-105">
-          Book <ArrowRight size={13} />
+          {t('bookCta')} <ArrowRight size={13} />
         </Link>
       </div>
 
       {/* Live map */}
-      <LiveMap position={position} onLocate={onLocate} className="h-[38vh] min-h-[240px] w-full sm:mt-4 sm:h-[300px] sm:rounded-2xl sm:border sm:border-ink-200/70" />
+      <LiveMap position={position} onLocate={onLocate} cars={nearbyQ.data || []} className="h-[38vh] min-h-[240px] w-full sm:mt-4 sm:h-[300px] sm:rounded-2xl sm:border sm:border-ink-200/70" />
 
       {/* Welcome ribbon */}
       <div className="mx-4 -mt-3 relative z-[600] flex items-center gap-2 rounded-xl bg-ink-900 px-4 py-2.5 text-sm text-white shadow-pop sm:mx-0 sm:mt-4">
         <Sparkles size={15} className="shrink-0 text-amber-300" />
-        <span className="truncate">Namaste{user?.name ? `, ${user.name.split(' ')[0]}` : ''} — where to today?</span>
+        <span className="truncate">{t('greeting', { name: user?.name ? `, ${user.name.split(' ')[0]}` : '' })}</span>
+      </div>
+
+      {/* Popular destination chips — horizontal scroll, tap to pre-fill Book */}
+      <div className="pt-3">
+        <p className="mb-2.5 px-4 text-[11px] font-semibold uppercase tracking-widest text-ink-400 sm:px-0">
+          {t('popularDest')}
+        </p>
+        <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 sm:px-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          {DESTINATIONS.map((d) => (
+            <button
+              key={d.name}
+              type="button"
+              onClick={() => navigate(`/book?drop=${encodeURIComponent(d.name)}&dlat=${d.lat}&dlng=${d.lng}`)}
+              className="group flex shrink-0 items-center gap-2 rounded-2xl border border-ink-200/80 bg-white px-3.5 py-2 shadow-card transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-soft active:scale-95"
+            >
+              <span className="text-base leading-none">{d.emoji}</span>
+              <span className="text-sm font-medium text-ink-700 group-hover:text-ink-900">{d.name}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Service tiles */}
@@ -84,43 +139,58 @@ export default function Home() {
           <ServiceTile
             to="/book?trip=one_way"
             icon={Navigation}
-            title="One-Way"
-            text="One side journey (drop-off)"
+            title={t('oneWay')}
+            text={t('oneWayText')}
             art={OneWayRoad}
           />
           <ServiceTile
             to="/book?trip=round_trip"
             icon={Repeat}
-            title="Round Trip"
-            text="Outstation & return"
+            title={t('roundTrip')}
+            text={t('roundTripText')}
             art={RoundTripRoad}
-            sub={routesQ.data ? `${routesQ.data.length} popular routes` : null}
+            sub={routesQ.data ? t('popularRoutes', { count: routesQ.data.length }) : null}
           />
         </div>
 
-        {/* Share a seat — wide */}
-        <WideTile
-          to="/discover"
-          icon={Users2}
-          title="Share a Seat"
-          text="Per-seat carpooling on daily routes — pay only for your seat."
-          badge={seatRides != null ? `${seatRides} rides running` : null}
-          cta="Find a seat"
-          photo={PHOTOS.seatShare}
-          alt="Group of friends enjoying a drive together"
-        />
+        {/* Share a seat — deliberately location-agnostic: a specific route is
+            only relevant to riders near it, so lead with the idea instead. */}
+        <Link
+          to="/sharing"
+          className="group block overflow-hidden rounded-2xl border border-ink-200 bg-gradient-to-br from-accent-soft via-white to-white shadow-card transition-all hover:-translate-y-0.5 hover:shadow-soft"
+        >
+          <div className="flex items-center gap-5 p-5">
+            <SeatShareArt className="h-24 w-auto shrink-0 text-accent sm:h-28" taken={1} total={4} />
 
-        {/* Ride alert — wide */}
-        <WideTile
-          to="/book?mode=bidding"
-          icon={Gavel}
-          title="Your Budget For This Ride"
-          text="Tell us your budget and let verified drivers bid — you pick the best quote."
-          cta="Post alert"
-          tone="dark"
-          photo={PHOTOS.bidding}
-          alt="Happy man giving a thumbs up"
-        />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <p className="flex items-center gap-1.5 font-display text-lg font-bold text-ink-900">
+                  <Users2 size={17} className="text-accent" /> {t('shareSeat')}
+                </p>
+                {seatRides ? (
+                  <span className="shrink-0 rounded-full bg-ink-900 px-2.5 py-1 text-[11px] font-semibold text-white">
+                    {t('todayCount', { count: seatRides })}
+                  </span>
+                ) : null}
+              </div>
+
+              <p className="mt-1 text-sm text-ink-500">{t('payOnlyYourSeat')}</p>
+
+              <ul className="mt-2.5 space-y-1 text-xs text-ink-600">
+                <li className="flex items-center gap-1.5">
+                  <IndianRupee size={12} className="shrink-0 text-accent" /> {t('splitFare')}
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <Repeat size={12} className="shrink-0 text-accent" /> {t('dailyRoutesHint')}
+                </li>
+              </ul>
+
+              <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-ink-900">
+                {t('findSeat')} <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </div>
+          </div>
+        </Link>
 
         {/* Refer & earn banner — chain referral mechanic */}
         <Link
@@ -130,12 +200,12 @@ export default function Home() {
           <ChainIllustration className="pointer-events-none absolute -right-1 top-1/2 h-[92%] w-2/5 -translate-y-1/2 opacity-95" />
           <div className="relative flex items-center gap-4 pr-28 sm:pr-36">
             <div className="min-w-0 flex-1">
-              <p className="font-display text-lg font-bold">Refer &amp; Kamao — chain rewards</p>
+              <p className="font-display text-lg font-bold">{t('referTitle')}</p>
               <p className="mt-0.5 text-sm text-white/85">
-                You refer a friend, they refer their friend — <span className="font-semibold text-white">their rides earn you a % too.</span> Lifetime, auto-credited.
+                {t('referText')}
               </p>
               <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-accent">
-                {user?.points ? `${user.points} pts` : 'Start your chain'} <ChevronRight size={13} />
+                {user?.points ? t('pts', { n: user.points }) : t('startChain')} <ChevronRight size={13} />
               </span>
             </div>
           </div>
@@ -193,6 +263,7 @@ function ChainIllustration({ className }) {
 // Photo-backed square tile (RodBez style): image fills the card, dark
 // gradient keeps the text readable.
 function ServiceTile({ to, icon: Icon, title, text, photo, alt, sub, art: Art }) {
+  const t = useTranslations('Home');
   // Illustrated tiles sit on a light surface so the black road reads; photo
   // tiles keep the dark scrim treatment.
   if (Art) {
@@ -213,7 +284,7 @@ function ServiceTile({ to, icon: Icon, title, text, photo, alt, sub, art: Art })
           <p className="mt-0.5 text-xs text-ink-500">{text}</p>
           {sub && <p className="mt-0.5 text-[11px] font-medium text-ink-700">{sub}</p>}
           <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-ink-900">
-            Book now <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
+            {t('bookNow')} <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
           </span>
         </div>
       </Link>
@@ -244,6 +315,7 @@ function ServiceTile({ to, icon: Icon, title, text, photo, alt, sub, art: Art })
 
 // Wide tile with the photo filling the right edge.
 function WideTile({ to, icon: Icon, title, text, badge, cta, tone, photo, alt }) {
+  const t = useTranslations('Home');
   const dark = tone === 'dark';
   return (
     <Link

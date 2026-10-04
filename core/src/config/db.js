@@ -27,6 +27,36 @@ export async function disconnectDB() {
   await mongoose.disconnect();
 }
 
+/**
+ * Run `fn(session)` inside a MongoDB multi-document transaction.
+ * Degrades gracefully on standalone mongod (dev/CI that isn't a replica set):
+ * code 20 = "Transaction numbers are only allowed on a replica member" — we
+ * catch it and re-run without a session so the app stays functional, just
+ * without atomicity. In production you MUST use a replica set (Atlas handles
+ * this automatically).
+ *
+ * @param {(session: import('mongoose').ClientSession|null) => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+export async function withTransaction(fn) {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      result = await fn(session);
+    });
+    return result;
+  } catch (err) {
+    if (err.code === 20 || err.codeName === 'IllegalOperation') {
+      // Standalone mongod — no replica set, transactions not available.
+      return fn(null);
+    }
+    throw err;
+  } finally {
+    await session.endSession();
+  }
+}
+
 function redact(uri) {
   return uri.replace(/\/\/([^:]+):([^@]+)@/, '//$1:****@');
 }

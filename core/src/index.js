@@ -2,7 +2,7 @@
 
 // Config
 export { env } from './config/env.js';
-export { connectDB, disconnectDB } from './config/db.js';
+export { connectDB, disconnectDB, withTransaction } from './config/db.js';
 
 // Models (importing here also registers them with Mongoose)
 export { User } from './models/User.js';
@@ -17,6 +17,8 @@ export { WalletTransaction } from './models/WalletTransaction.js';
 export { DriverRoute } from './models/DriverRoute.js';
 export { Referral } from './models/Referral.js';
 export { ReferralEarning } from './models/ReferralEarning.js';
+export { Coupon } from './models/Coupon.js';
+export { CouponRedemption } from './models/CouponRedemption.js';
 export { LocationShare } from './models/LocationShare.js';
 export { Contact, normalizePhone } from './models/Contact.js';
 export { SosAlert } from './models/SosAlert.js';
@@ -26,7 +28,8 @@ export { requireAuth, optionalAuth } from './middleware/auth.js';
 export { allow } from './middleware/role.js';
 export { validate } from './middleware/validate.js';
 export { notFound, errorHandler } from './middleware/error.js';
-export { applySecurity, otpRateLimiter } from './middleware/security.js';
+export { applySecurity, otpRateLimiter, otpAbuseLimiter } from './middleware/security.js';
+export { requestId } from './middleware/requestId.js';
 
 // Utils
 export { ApiError } from './utils/apiError.js';
@@ -63,6 +66,13 @@ export {
   payCustomerRideCommission,
   pointsToDiscount,
 } from './services/referralService.js';
+export {
+  validateCoupon,
+  reserveCoupon,
+  releaseCoupon,
+  commitCoupon,
+  discountFor,
+} from './services/couponService.js';
 export { fetchArrivalDelay } from './services/delayService.js';
 export { seedDatabase, isDatabaseEmpty, needsSeeding } from './seedData.js';
 export { requestOtp, verifyOtp } from './services/otpService.js';

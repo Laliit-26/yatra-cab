@@ -9,6 +9,7 @@ import rateLimit from 'express-rate-limit';
 import express from 'express';
 import { env } from '../config/env.js';
 import { ApiError } from '../utils/apiError.js';
+import { requestId } from './requestId.js';
 
 /**
  * Apply the shared security + parsing middleware chain to an Express app.
@@ -24,6 +25,7 @@ export function applySecurity(app, { allowedOrigins = [], rateLimitMax = 300, js
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
 
+  app.use(requestId); // attach req.id + echo X-Request-Id before any logging
   app.use(helmet());
   app.use(
     cors({
@@ -42,9 +44,18 @@ export function applySecurity(app, { allowedOrigins = [], rateLimitMax = 300, js
   app.use(hpp()); // HTTP parameter pollution
   app.use(compression());
   if (env.nodeEnv !== 'test') {
-    app.use(morgan(env.isProd ? 'combined' : 'dev'));
+    morgan.token('req-id', (req) => req.id);
+    // Include the request ID in every access log line for end-to-end tracing.
+    const fmt = env.isProd ? ':req-id :remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"' : ':req-id :method :url :status :response-time ms';
+    app.use(morgan(fmt));
   }
 
+  // SCALING NOTE: express-rate-limit uses an in-memory store by default.
+  // Each instance tracks its own counters, so the effective limit multiplies
+  // by the number of instances (2 instances → 2× the allowed requests per IP).
+  // For multi-instance deployments switch to rate-limit-redis or similar:
+  //   import RedisStore from 'rate-limit-redis';
+  //   store: new RedisStore({ sendCommand: (...args) => redisClient.sendCommand(args) })
   app.use(
     rateLimit({
       windowMs: 15 * 60 * 1000,
@@ -56,11 +67,30 @@ export function applySecurity(app, { allowedOrigins = [], rateLimitMax = 300, js
   );
 }
 
-// A tight limiter for OTP endpoints (SMS/email bombing defence).
+// OTP limiting, in two layers.
+//
+// Keying on IP alone was wrong: everyone behind one office or mobile-carrier
+// NAT shares a bucket, so a handful of people signing in locks out the rest —
+// and in development every portal and script comes from ::1, which wedges the
+// whole app. The per-phone limit is what actually stops SMS bombing; the IP
+// limit is a wider net against someone enumerating numbers from one machine.
+const normalisePhone = (v) => String(v || '').replace(/[^0-9]/g, '').slice(-10);
+
+/** Stops one number being bombed with texts. */
 export const otpRateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 5,
+  max: env.isProd ? 5 : 50, // dev shares one machine across three portals
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, message: 'Too many OTP requests. Try again later.' },
+  keyGenerator: (req) => normalisePhone(req.body?.phone) || `ip:${req.ip}`,
+  message: { success: false, message: 'Too many codes requested for this number. Try again in a few minutes.' },
+});
+
+/** Backstop: one machine should not be able to walk the phone-number space. */
+export const otpAbuseLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: env.isProd ? 40 : 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many OTP requests from this device. Try again later.' },
 });

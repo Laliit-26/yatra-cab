@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  Input,
   useAuth,
   Card, CardHeader, CardBody, Button, Badge, StatusBadge, Modal, Avatar, StarRating, StarPicker,
   Field, Textarea, QueryBoundary, LoadingScreen, EmptyState, toast,
@@ -9,16 +10,19 @@ import {
 } from '@yatracab/ui';
 import {
   ArrowLeft, MapPin, Car, CalendarClock, Users, Phone, IndianRupee, Gavel, Star,
-  ShieldCheck, Navigation, XCircle, CheckCircle2, Info, Loader2, Sparkles, ShieldAlert, Share2,
+  ShieldCheck, Navigation, XCircle, CheckCircle2, Info, Loader2, Sparkles, ShieldAlert, Share2, Ticket,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { getSocket } from '../socket.js';
+import { LiveMap } from '../components/LiveMap.jsx';
+import { openCheckout } from '../lib/razorpay.js';
 
 export default function RideDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [driverLoc, setDriverLoc] = useState(null);
+  const [otp, setOtp] = useState(null); // { phase, code } — pushed when the driver asks
 
   const rideQuery = useQuery({ queryKey: ['ride', id], queryFn: () => api.get(`/customer/rides/${id}`).then((r) => r.ride) });
   const ride = rideQuery.data;
@@ -38,17 +42,20 @@ export default function RideDetail() {
     socket.emit('ride:join', id);
     const onBid = () => qc.invalidateQueries({ queryKey: ['ride-bids', id] });
     const onUpdate = () => { qc.invalidateQueries({ queryKey: ['ride', id] }); qc.invalidateQueries({ queryKey: ['ride-bids', id] }); };
-    const onLoc = (p) => p.rideId === id && setDriverLoc({ lat: p.lat, lng: p.lng });
+    const onLoc = (p) => p.rideId === id && setDriverLoc({ lat: p.lat, lng: p.lng, heading: p.heading, at: p.at });
+    const onOtp = (p) => p.rideId === id && setOtp({ phase: p.phase, code: p.code });
     socket.on('ride:bid_new', onBid);
     socket.on('ride:updated', onUpdate);
     socket.on('ride:started', onUpdate);
     socket.on('ride:driver_location', onLoc);
+    socket.on('ride:otp', onOtp);
     return () => {
       socket.emit('ride:leave', id);
       socket.off('ride:bid_new', onBid);
       socket.off('ride:updated', onUpdate);
       socket.off('ride:started', onUpdate);
       socket.off('ride:driver_location', onLoc);
+      socket.off('ride:otp', onOtp);
     };
   }, [id, qc]);
 
@@ -117,10 +124,17 @@ export default function RideDetail() {
               </CardBody>
             </Card>
 
+            {/* Celebration moment when the driver is locked in */}
+            {ride.status === 'confirmed' && <ConfirmedBanner />}
+
             {/* State-specific panels */}
             {ride.status === 'pending_payment' && <PaymentPanel ride={ride} onDone={refetchAll} />}
+            {/* TESTING — quoted rides confirm without an online payment, so this
+                optional card is the only way to reach the gateway. Remove once
+                the payment model is settled. */}
+            {ride.status === 'confirmed' && <PaymentPanel ride={ride} optional onDone={refetchAll} />}
             {isBidding && <BidsPanel rideId={id} bidsQuery={bidsQuery} onAccepted={refetchAll} />}
-            {['confirmed', 'ongoing'].includes(ride.status) && <ActivePanel ride={ride} driverLoc={driverLoc} onChange={refetchAll} />}
+            {['confirmed', 'ongoing'].includes(ride.status) && <ActivePanel ride={ride} driverLoc={driverLoc} otp={otp} onChange={refetchAll} />}
             {ride.status === 'completed' && <CompletedPanel ride={ride} onRated={refetchAll} />}
             {['cancelled', 'no_show'].includes(ride.status) && <CancelledPanel ride={ride} />}
           </>
@@ -150,38 +164,86 @@ function MoneyRow({ label, value, hint, bold }) {
   );
 }
 
-function PaymentPanel({ ride, onDone }) {
+function PaymentPanel({ ride, optional = false, onDone }) {
   const { user, refreshMe } = useAuth();
   const [open, setOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
+  const [couponInput, setCouponInput] = useState('');
+  const [coupon, setCoupon] = useState(null); // { code, discount, description }
+  const [couponError, setCouponError] = useState('');
+  const [checking, setChecking] = useState(false);
   const [applied, setApplied] = useState(null); // { feeAmount, discount, pointsRedeemed }
 
   // Read the points balance from the referral endpoint (auth user may not carry it).
   const refQuery = useQuery({ queryKey: ['referral'], queryFn: () => api.get('/customer/referral') });
+  // Riders should not have to already know a code — show what is running.
+  const offersQuery = useQuery({ queryKey: ['coupons'], queryFn: () => api.get('/customer/coupons').then((r) => r.coupons) });
   const points = refQuery.data?.points ?? user?.points ?? 0;
 
-  // Mock gateway flow: create order → verify with the returned mock token.
+  // Checked before paying, so the rider sees the saving without the code being
+  // taken from stock — it is only claimed when they actually pay.
+  const applyCoupon = async (fromOffer) => {
+    const code = (fromOffer || couponInput).toUpperCase().trim();
+    if (!code) return;
+    setChecking(true);
+    setCouponError('');
+    try {
+      const res = await api.post(`/customer/rides/${ride._id}/coupon/check`, { code });
+      if (res.valid) {
+        setCoupon({ code: res.code, discount: res.discount, description: res.description });
+        toast.success(`${res.code} applied — ${inr(res.discount)} off`);
+      } else {
+        setCoupon(null);
+        setCouponError(res.message || 'That code did not work');
+      }
+    } catch (err) {
+      setCouponError(err.message);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const clearCoupon = () => { setCoupon(null); setCouponInput(''); setCouponError(''); };
+
   const pay = async () => {
     setProcessing(true);
     try {
-      const { order, feeAmount, discount, pointsRedeemed } = await api.post(
+      const { order, feeAmount, discount, pointsRedeemed, devPaymentOtp } = await api.post(
         `/customer/rides/${ride._id}/payment/order`,
-        { usePoints }
+        { usePoints, ...(coupon ? { couponCode: coupon.code } : {}) }
       );
       setApplied({ feeAmount, discount, pointsRedeemed });
-      await new Promise((r) => setTimeout(r, 1200)); // simulate checkout
-      await api.post(`/customer/rides/${ride._id}/payment/verify`, {
-        orderId: order.id,
-        paymentId: `pay_mock_${Date.now()}`,
-        signature: order.mockToken,
-      });
+
+      let verifyBody;
+      if (order.provider === 'razorpay') {
+        // Real gateway: Checkout returns the signature we verify server-side.
+        const res = await openCheckout({
+          keyId: order.keyId,
+          order,
+          description: `Advance for ${ride.destination || 'your ride'}`,
+          prefill: { name: user?.name, phone: user?.phone, email: user?.email },
+        });
+        verifyBody = {
+          orderId: res.razorpay_order_id,
+          paymentId: res.razorpay_payment_id,
+          signature: res.razorpay_signature,
+        };
+      } else {
+        // Mock provider: echo the deterministic token back.
+        await new Promise((r) => setTimeout(r, 900));
+        verifyBody = { orderId: order.id, paymentId: `pay_mock_${Date.now()}`, signature: order.mockToken };
+      }
+
+      await api.post(`/customer/rides/${ride._id}/payment/verify`, { ...verifyBody, otp: devPaymentOtp });
       toast.success(discount > 0 ? `Paid — ${inr(discount)} off with points!` : 'Payment successful — booking confirmed!');
       setOpen(false);
       refreshMe?.().catch(() => {});
       onDone();
     } catch (err) {
-      toast.error(err.message);
+      // A rider closing the sheet is not an error worth shouting about. The
+      // webhook still confirms anything they did pay for.
+      if (!err?.dismissed) toast.error(err.message);
     } finally {
       setProcessing(false);
     }
@@ -189,14 +251,76 @@ function PaymentPanel({ ride, onDone }) {
 
   return (
     <Card>
-      <CardHeader title="Complete your booking" subtitle="Pay the advance Booking & Safety Fee to confirm." icon={IndianRupee} />
+      <CardHeader
+        title={optional ? 'Pay an advance (optional)' : 'Complete your booking'}
+        subtitle={
+          optional
+            ? 'Not required — your fare is cash to the driver. Available for testing the payment flow.'
+            : 'Pay the advance Booking & Safety Fee to confirm.'
+        }
+        icon={IndianRupee}
+      />
       <CardBody>
         <div className="rounded-xl bg-ink-50 p-4">
           <MoneyRow label="Ride fare" value={inr(ride.fareAmount)} hint="cash to driver" />
           <MoneyRow label={`Booking & Safety Fee (${ride.feePercent}%)`} value={inr(ride.feeAmount)} hint="online now" />
           <div className="my-1 border-t border-ink-200" />
-          <MoneyRow label="Pay online now" value={inr(ride.feeAmount)} bold />
+          {coupon && <MoneyRow label={`Coupon ${coupon.code}`} value={`− ${inr(coupon.discount)}`} />}
+          <MoneyRow label="Pay online now" value={inr(Math.max(0, ride.feeAmount - (coupon?.discount || 0)))} bold />
         </div>
+        {/* Coupon */}
+        <div className="mt-3">
+          {coupon ? (
+            <div className="flex items-center gap-2.5 rounded-xl border border-success/40 bg-success-soft p-3.5">
+              <Ticket size={16} className="shrink-0 text-success" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-ink-900">{coupon.code} applied</span>
+                <span className="block text-xs text-ink-600">{inr(coupon.discount)} off{coupon.description ? ` · ${coupon.description}` : ''}</span>
+              </span>
+              <button type="button" onClick={clearCoupon} className="shrink-0 text-xs font-medium text-ink-500 hover:text-ink-900">Remove</button>
+            </div>
+          ) : (
+            <div>
+              <div className="flex gap-2">
+                <Input
+                  value={couponInput}
+                  onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponError(''); }}
+                  placeholder="Coupon code"
+                  className="flex-1 tracking-widest"
+                />
+                <Button variant="soft" loading={checking} disabled={!couponInput.trim()} onClick={() => applyCoupon()}>Apply</Button>
+              </div>
+              {couponError && <p className="mt-1.5 text-xs text-danger">{couponError}</p>}
+
+              {offersQuery.data?.length > 0 && (
+                <div className="mt-2.5">
+                  <p className="mb-1.5 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-ink-400">
+                    <Ticket size={11} /> Offers available
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {offersQuery.data.map((o) => (
+                      <button
+                        key={o.code}
+                        type="button"
+                        disabled={checking}
+                        onClick={() => { setCouponInput(o.code); applyCoupon(o.code); }}
+                        className="rounded-lg border border-dashed border-accent/50 bg-accent-soft px-2.5 py-1.5 text-left transition-colors hover:border-accent disabled:opacity-60"
+                        title={o.description || ''}
+                      >
+                        <span className="block text-xs font-bold tracking-wide text-accent">{o.code}</span>
+                        <span className="block text-[11px] text-ink-500">
+                          {o.type === 'percent' ? `${o.value}% off` : `${inr(o.value)} off`}
+                          {o.minFare > 0 ? ` · over ${inr(o.minFare)}` : ''}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {points > 0 && (
           <button
             type="button"
@@ -219,7 +343,7 @@ function PaymentPanel({ ride, onDone }) {
           Free cancellation up to 6h before the ride (minus ₹50). Driver no-show = full refund.
         </p>
         <Button className="mt-4 w-full" size="lg" icon={IndianRupee} onClick={() => setOpen(true)}>
-          Pay {inr(ride.feeAmount)} advance
+          Pay {inr(Math.max(0, ride.feeAmount - (coupon?.discount || 0)))} advance
         </Button>
       </CardBody>
 
@@ -235,16 +359,25 @@ function PaymentPanel({ ride, onDone }) {
             {processing ? <Loader2 size={30} className="animate-spin" /> : <IndianRupee size={30} />}
           </div>
           {(() => {
-            const previewDiscount = usePoints ? Math.min(points, ride.feeAmount) : 0;
+            // Mirrors the server: the coupon comes off first, then points cover
+            // what is left. If this preview disagrees with that order the rider
+            // sees one number here and is charged another.
+            const couponOff = coupon?.discount || 0;
+            const pointsOff = usePoints ? Math.min(points, Math.max(0, ride.feeAmount - couponOff)) : 0;
+            const previewDiscount = couponOff + pointsOff;
             const payable = applied ? applied.feeAmount : Math.max(0, ride.feeAmount - previewDiscount);
-            const shownDiscount = applied ? applied.discount : previewDiscount;
             return (
               <>
                 <p className="text-3xl font-semibold text-ink-900">{inr(payable)}</p>
-                <p className="mt-1 text-sm text-ink-500">Booking & Safety Fee</p>
-                {shownDiscount > 0 && (
-                  <p className="mt-1 flex items-center justify-center gap-1 text-sm font-medium text-success">
-                    <Sparkles size={13} /> {inr(shownDiscount)} off with points
+                <p className="mt-1 text-sm text-ink-500">Booking &amp; Safety Fee</p>
+                {previewDiscount > 0 && (
+                  <p className="mt-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-sm font-medium text-success">
+                    {couponOff > 0 && (
+                      <span className="inline-flex items-center gap-1"><Ticket size={13} /> {inr(couponOff)} off · {coupon.code}</span>
+                    )}
+                    {pointsOff > 0 && (
+                      <span className="inline-flex items-center gap-1"><Sparkles size={13} /> {inr(pointsOff)} off with points</span>
+                    )}
                   </p>
                 )}
               </>
@@ -418,7 +551,31 @@ function SafetyRow({ ride }) {
   );
 }
 
-function ActivePanel({ ride, driverLoc, onChange }) {
+/**
+ * The driver has asked for a checkpoint code; this is where the rider reads it.
+ * Deliberately loud — it is the one thing on screen they need to act on, and
+ * for the drop-off code it is also their leverage: withhold it and the ride
+ * cannot be closed until the fare is what was agreed.
+ */
+function OtpCallout({ phase, code }) {
+  const starting = phase === 'start';
+  return (
+    <div className="rounded-xl border border-accent/40 bg-accent-soft p-4">
+      <p className="flex items-center gap-1.5 text-sm font-semibold text-ink-900">
+        <ShieldCheck size={15} className="text-accent" />
+        {starting ? 'Your start code' : 'Your drop-off code'}
+      </p>
+      <p className="my-2 font-display text-3xl font-bold tracking-[0.3em] text-accent">{code}</p>
+      <p className="text-xs text-ink-600">
+        {starting
+          ? 'Read this to your driver once you are in the right cab.'
+          : 'Share this only when the fare matches what you agreed.'}
+      </p>
+    </div>
+  );
+}
+
+function ActivePanel({ ride, driverLoc, otp, onChange }) {
   const cancel = useMutation({
     mutationFn: () => api.patch(`/customer/rides/${ride._id}/cancel`, { reason: 'Changed plans' }),
     onSuccess: (res) => { toast.success(res.refund?.reasonLabel || 'Ride cancelled'); onChange(); },
@@ -435,23 +592,35 @@ function ActivePanel({ ride, driverLoc, onChange }) {
         icon={ShieldCheck}
       />
       <CardBody className="space-y-4">
+        {otp && <OtpCallout phase={otp.phase} code={otp.code} />}
+
         <DriverCard ride={ride} />
 
-        {/* Live location panel (map placeholder — no external map key needed) */}
-        <div className="relative overflow-hidden rounded-xl border border-accent/20 bg-accent-soft p-5">
-          <div className="absolute inset-0 bg-dotted opacity-60" />
-          <div className="relative flex items-center gap-3">
-            <span className="relative flex h-3 w-3">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-accent" />
+        {/* Live tracking: the driver's car on the map, moving as their phone
+            reports in. Falls back to a status line until the first fix. */}
+        <div className="overflow-hidden rounded-xl border border-ink-200">
+          <LiveMap
+            position={loc ? { lat: loc.lat, lng: loc.lng } : ride.pickup}
+            cars={loc ? [{ id: 'driver', lat: loc.lat, lng: loc.lng, heading: loc.heading, active: true }] : []}
+            focusCar={loc}
+            className="h-56 w-full"
+          />
+          <div className="flex items-center gap-3 bg-white px-4 py-3">
+            <span className="relative flex h-3 w-3 shrink-0">
+              {loc && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />}
+              <span className={`relative inline-flex h-3 w-3 rounded-full ${loc ? 'bg-accent' : 'bg-ink-300'}`} />
             </span>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-medium text-ink-800">
-                {ride.status === 'ongoing' ? 'Live tracking active' : 'Driver will share location when the trip starts'}
+                {loc
+                  ? 'Live tracking active'
+                  : ride.status === 'ongoing'
+                    ? 'Waiting for your driver’s GPS…'
+                    : 'Your driver will appear here when the trip starts'}
               </p>
-              <p className="text-xs text-ink-500">
-                {loc ? `Last seen: ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}` : 'Awaiting GPS…'}
-              </p>
+              {loc?.at && (
+                <p className="text-xs text-ink-500">Updated {Math.max(0, Math.round((Date.now() - loc.at) / 1000))}s ago</p>
+              )}
             </div>
           </div>
         </div>
@@ -528,5 +697,30 @@ function CancelledPanel({ ride }) {
         <Link to="/"><Button variant="secondary" className="mt-4 w-full">Book another ride</Button></Link>
       </CardBody>
     </Card>
+  );
+}
+
+// Celebratory confirmation banner — the single moment the rider has been
+// waiting for. Warm gradient, animated entry, sparkles.
+function ConfirmedBanner() {
+  const t = useTranslations('RideDetail');
+  return (
+    <div className="relative overflow-hidden rounded-2xl bg-brand-gradient p-5 text-accent-fg shadow-glow animate-scale-in">
+      {/* Decorative mandala rings */}
+      <span className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full border-2 border-white/15" />
+      <span className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full border border-white/10" />
+      <div className="relative flex items-center gap-4">
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur">
+          <CheckCircle2 size={28} className="text-white" />
+        </span>
+        <div>
+          <p className="flex items-center gap-1.5 font-display text-xl font-bold">
+            <Sparkles size={16} className="text-amber-300" />
+            {t('confirmedTitle')}
+          </p>
+          <p className="mt-0.5 text-sm text-white/85">{t('confirmedText')}</p>
+        </div>
+      </div>
+    </div>
   );
 }

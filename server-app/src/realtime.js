@@ -16,6 +16,7 @@ export const rooms = {
   route: (routeId) => `route:${routeId}`,
   user: (userId) => `user:${userId}`,
   drivers: () => 'drivers', // all connected drivers (for custom Ride Alerts)
+  admins: () => 'admins', // ops dashboard — sees every driver's movement
 };
 
 export function emitToRide(rideId, event, payload) {
@@ -32,4 +33,8 @@ export function emitToUser(userId, event, payload) {
 
 export function emitToDrivers(event, payload) {
   io?.to(rooms.drivers()).emit(event, payload);
+}
+
+export function emitToAdmins(event, payload) {
+  io?.to(rooms.admins()).emit(event, payload);
 }

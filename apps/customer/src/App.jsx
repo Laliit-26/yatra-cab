@@ -7,7 +7,7 @@ import Book from './pages/Book.jsx';
 import MyRides from './pages/MyRides.jsx';
 import RideDetail from './pages/RideDetail.jsx';
 import Profile from './pages/Profile.jsx';
-import Discover from './pages/Discover.jsx';
+import Sharing from './pages/Sharing.jsx';
 import Rewards from './pages/Rewards.jsx';
 import Track from './pages/Track.jsx';
 
@@ -34,7 +34,9 @@ export default function App() {
       >
         <Route path="/" element={<Home />} />
         <Route path="/book" element={<Book />} />
-        <Route path="/discover" element={<Discover />} />
+        <Route path="/sharing" element={<Sharing />} />
+        {/* old link, kept so existing bookmarks still land somewhere */}
+        <Route path="/discover" element={<Navigate to="/sharing" replace />} />
         <Route path="/rewards" element={<Rewards />} />
         <Route path="/rides" element={<MyRides />} />
         <Route path="/rides/:id" element={<RideDetail />} />

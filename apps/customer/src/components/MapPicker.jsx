@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Modal, Button, toast } from '@yatracab/ui';
+import { Modal, Button, toast, useTranslations } from '@yatracab/ui';
 import { Crosshair, Loader2, MapPin } from 'lucide-react';
 
 // Drag-the-map picker, the pattern riders already know from Uber/Ola: the pin
@@ -40,7 +40,8 @@ async function reverseGeocode(lat, lng, signal) {
   return shortLabel(data.display_name) || 'Dropped pin';
 }
 
-export function MapPicker({ open, value, title = 'Adjust drop point', onClose, onConfirm }) {
+export function MapPicker({ open, value, title, onClose, onConfirm }) {
+  const t = useTranslations('MapPicker');
   const holderRef = useRef(null);
   const mapRef = useRef(null);
   const abortRef = useRef(null);
@@ -58,7 +59,7 @@ export function MapPicker({ open, value, title = 'Adjust drop point', onClose, o
       try {
         setAddress(await reverseGeocode(lat, lng, abortRef.current.signal));
       } catch (err) {
-        if (err.name !== 'AbortError') setAddress('Dropped pin');
+        if (err.name !== 'AbortError') setAddress(t('droppedPin'));
       } finally {
         setLooking(false);
       }
@@ -99,17 +100,17 @@ export function MapPicker({ open, value, title = 'Adjust drop point', onClose, o
   }, [open, value?.lat, value?.lng, value?.address, lookUp]);
 
   const recenterOnMe = () => {
-    if (!navigator.geolocation) return toast.error('Location not supported on this device');
+    if (!navigator.geolocation) return toast.error(t('notSupported'));
     navigator.geolocation.getCurrentPosition(
       (pos) => mapRef.current?.setView([pos.coords.latitude, pos.coords.longitude], 17),
-      () => toast.error('Could not get your location'),
+      () => toast.error(t('couldNotLocate')),
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
 
   const confirm = () => {
     if (!center) return;
-    onConfirm({ address: address || 'Dropped pin', lat: center.lat, lng: center.lng });
+    onConfirm({ address: address || t('droppedPin'), lat: center.lat, lng: center.lng });
     onClose();
   };
 
@@ -117,12 +118,12 @@ export function MapPicker({ open, value, title = 'Adjust drop point', onClose, o
     <Modal
       open={open}
       onClose={onClose}
-      title={title}
-      subtitle="Drag the map to move the pin exactly where you want."
+      title={title || t('adjustDrop')}
+      subtitle={t('subtitle')}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={confirm} disabled={!center}>Confirm point</Button>
+          <Button variant="ghost" onClick={onClose}>{t('cancel')}</Button>
+          <Button onClick={confirm} disabled={!center}>{t('confirmPoint')}</Button>
         </>
       }
     >
@@ -141,7 +142,7 @@ export function MapPicker({ open, value, title = 'Adjust drop point', onClose, o
           <button
             type="button"
             onClick={recenterOnMe}
-            title="Centre on my location"
+            title={t('centreOnMe')}
             className="absolute bottom-3 left-3 z-[500] flex h-10 w-10 items-center justify-center rounded-full border border-ink-200 bg-white shadow-card transition-colors hover:text-accent"
           >
             <Crosshair size={17} />
@@ -152,7 +153,7 @@ export function MapPicker({ open, value, title = 'Adjust drop point', onClose, o
           <MapPin size={16} className="mt-0.5 shrink-0 text-accent" />
           <div className="min-w-0">
             <p className="font-medium text-ink-900">
-              {looking ? <span className="inline-flex items-center gap-1.5 text-ink-500"><Loader2 size={13} className="animate-spin" /> Finding address…</span> : address || 'Move the map to choose a point'}
+              {looking ? <span className="inline-flex items-center gap-1.5 text-ink-500"><Loader2 size={13} className="animate-spin" /> {t('findingAddress')}</span> : address || t('moveToChoose')}
             </p>
             {center && (
               <p className="mt-0.5 text-xs text-ink-400">

@@ -78,7 +78,14 @@ export const sosSchema = Joi.object({
 
 export const shareSchema = Joi.object({ rideId: objectId.required() });
 
-export const redeemSchema = Joi.object({ usePoints: Joi.boolean().default(false) });
+export const redeemSchema = Joi.object({
+  usePoints: Joi.boolean().default(false),
+  couponCode: Joi.string().alphanum().min(3).max(16).uppercase().optional(),
+});
+
+export const couponCheckSchema = Joi.object({
+  code: Joi.string().alphanum().min(3).max(16).uppercase().required(),
+});
 
 export const paymentVerifySchema = Joi.object({
   otp: Joi.string().pattern(/^[0-9]{6}$/).optional(),

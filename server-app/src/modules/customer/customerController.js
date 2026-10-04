@@ -16,6 +16,9 @@ import {
   debit as walletDebit,
   fetchArrivalDelay,
   pointsToDiscount,
+  reserveCoupon,
+  releaseCoupon,
+  commitCoupon,
   computeRefund,
   createOrder,
   verifyPayment as gatewayVerify,
@@ -31,6 +34,7 @@ import {
   pageMeta,
 } from '@yatracab/core';
 import { emitToRoute, emitToRide, emitToUser, emitToDrivers } from '../../realtime.js';
+import { confirmPaidRide } from './paymentConfirm.js';
 import {
   assignDriverForFixedRide,
   applyRatingToDriver,
@@ -371,21 +375,51 @@ export const acceptBid = catchAsync(async (req, res) => {
 // POST /customer/rides/:id/payment/order  (optionally redeem cashback points)
 export const createPaymentOrder = catchAsync(async (req, res) => {
   const ride = await ownRide(req.params.id, req.user._id);
-  if (ride.status !== RIDE_STATUS.PENDING_PAYMENT) throw ApiError.badRequest('Ride is not awaiting payment');
+
+  // TESTING AFFORDANCE — remove once the payment model is decided.
+  // Quoted rides confirm without any online payment (the driver's wallet pays
+  // the commission), so nothing in the UI reaches the gateway. Allowing an
+  // OPTIONAL advance on a confirmed ride makes the Razorpay flow reachable for
+  // testing without changing how bookings actually work.
+  const optionalAdvance = ride.status === RIDE_STATUS.CONFIRMED;
+  if (ride.status !== RIDE_STATUS.PENDING_PAYMENT && !optionalAdvance) {
+    throw ApiError.badRequest('Ride is not awaiting payment');
+  }
+  if (!ride.feeAmount && optionalAdvance) {
+    // Derive a nominal advance from the agreed fare so there is something to charge.
+    ride.feeAmount = Math.max(1, Math.round((ride.fareAmount || 0) * (env.business.feePercent / 100)));
+    await ride.save();
+  }
   if (!ride.feeAmount) throw ApiError.badRequest('Fee not set for this ride');
 
-  // Redeem cashback points as a discount on the online fee.
+  // Any coupon held from an earlier attempt at this checkout goes back on the
+  // shelf first, so re-opening payment never quietly burns a second one.
+  await releaseCoupon(ride._id);
+
   let discount = 0;
+  let couponCode = null;
+
+  // A coupon comes off the fee first, then points cover what is left. Riders
+  // read a coupon as "the offer", so it should be the part that clearly applies.
+  if (req.body.couponCode) {
+    const claim = await reserveCoupon(req.body.couponCode, { user: req.user, ride });
+    discount += claim.discount;
+    couponCode = claim.coupon.code;
+    ride.coupon = { code: claim.coupon.code, discount: claim.discount };
+  }
+
   if (req.body.usePoints && req.user.points > 0) {
-    discount = pointsToDiscount(req.user.points, ride.feeAmount);
-    if (discount > 0) {
-      const pointsUsed = discount; // 1 point = ₹1 by default
-      req.user.points = Math.max(0, req.user.points - pointsUsed);
+    const remainingFee = Math.max(0, ride.feeAmount - discount);
+    const fromPoints = pointsToDiscount(req.user.points, remainingFee);
+    if (fromPoints > 0) {
+      req.user.points = Math.max(0, req.user.points - fromPoints); // 1 point = ₹1
       await req.user.save();
-      ride.pointsRedeemed = pointsUsed;
-      ride.discount = discount;
+      ride.pointsRedeemed = fromPoints;
+      discount += fromPoints;
     }
   }
+
+  ride.discount = discount;
   const payable = Math.max(0, ride.feeAmount - discount);
 
   const order = await createOrder({ amount: payable, receipt: `ride_${ride._id}` });
@@ -413,6 +447,7 @@ export const createPaymentOrder = catchAsync(async (req, res) => {
     feeAmount: payable,
     discount,
     pointsRedeemed: ride.pointsRedeemed,
+    couponCode,
     // Dev convenience: the code is delivered out-of-band in production.
     devPaymentOtp: env.nodeEnv === 'production' ? undefined : ride.verification.payment.code,
   });
@@ -433,38 +468,20 @@ export const verifyRidePayment = catchAsync(async (req, res) => {
   const valid = await gatewayVerify({ orderId, paymentId, signature });
   if (!valid) {
     payment.status = 'failed';
+    await releaseCoupon(ride._id); // a declined card must not consume the coupon
     await payment.save();
     throw ApiError.badRequest('Payment verification failed');
   }
 
-  payment.status = 'paid';
-  payment.paymentId = paymentId;
-  payment.signature = signature;
-  payment.paidAt = new Date();
-  await payment.save();
-
-  // Assign a driver for fixed rides (bidding rides already have one).
-  if (ride.mode === 'fixed' && !ride.driver) {
-    const driver = await assignDriverForFixedRide(ride);
-    if (driver) ride.driver = driver._id;
-  }
-  ride.status = RIDE_STATUS.CONFIRMED;
-  // Checkpoints 2 and 3 — issued once paid, held by the rider only.
-  ride.verification = ride.verification || {};
-  if (ride.verification.payment) ride.verification.payment.verifiedAt = new Date();
-  ride.verification.start = { code: otp6() };
-  ride.verification.end = { code: otp6() };
-  await ride.save();
-
-  if (ride.driver) {
-    const driver = await Driver.findById(ride.driver).select('user');
-    if (driver) {
-      emitToUser(String(driver.user), 'ride:assigned', { rideId: String(ride._id) });
-      notify(driver.user, { title: 'New ride assigned', body: 'A fixed-route ride is confirmed for you.' });
-    }
-  }
-  notify(req.user._id, { title: 'Booking confirmed', body: 'Your advance fee is paid. Have a great trip!' });
-  emitToRide(String(ride._id), 'ride:updated', { rideId: String(ride._id), status: ride.status });
+  // Same path the webhook takes, so a ride confirmed by either route ends up
+  // in exactly the same state — and whichever arrives second is a no-op.
+  await confirmPaidRide({
+    payment,
+    ride,
+    paymentId,
+    signature,
+    assignDriver: assignDriverForFixedRide,
+  });
 
   const populated = await Ride.findById(ride._id).populate({
     path: 'driver',
@@ -497,6 +514,7 @@ export const cancelRide = catchAsync(async (req, res) => {
     }
   }
 
+  await releaseCoupon(ride._id); // cancelled bookings return the coupon to stock
   ride.status = RIDE_STATUS.CANCELLED;
   ride.cancellation = { by: 'customer', reason: req.body.reason, at: new Date(), refundAmount: refundInfo.refundAmount };
   await ride.save();

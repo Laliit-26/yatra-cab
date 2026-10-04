@@ -9,8 +9,7 @@ import {
   rejectDriver,
   reviewDocument,
   setDriverBlocked,
-  addPenalty,
-} from './driverAdminController.js';
+  addPenalty, liveDrivers } from './driverAdminController.js';
 
 const router = Router();
 router.use(...adminGuard);
@@ -28,6 +27,7 @@ const penaltySchema = Joi.object({
 });
 
 router.get('/', listDrivers);
+router.get('/live', liveDrivers); // before '/:id' — otherwise 'live' is read as an id
 router.get('/:id', getDriver);
 router.patch('/:id/approve', approveDriver);
 router.patch('/:id/reject', validate(rejectSchema), rejectDriver);

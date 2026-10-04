@@ -7,9 +7,14 @@ import authRoutes from './modules/auth/authRoutes.js';
 import customerRoutes from './modules/customer/customerRoutes.js';
 import driverRoutes from './modules/driver/driverRoutes.js';
 import sharedRoutes from './modules/shared/sharedRoutes.js';
+import webhookRoutes from './modules/payments/webhookRoutes.js';
 
 export function createApp() {
   const app = express();
+
+  // Before applySecurity: that installs express.json(), and the webhook needs
+  // the raw bytes Razorpay signed. It authenticates by HMAC, not by session.
+  app.use('/api/payments/webhook', webhookRoutes);
 
   applySecurity(app, { allowedOrigins: appConfig.clientUrls, rateLimitMax: 600 });
 

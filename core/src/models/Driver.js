@@ -46,6 +46,11 @@ const driverSchema = new mongoose.Schema(
       type: { type: String, enum: ['Point'], default: 'Point' },
       coordinates: { type: [Number], default: [75.7873, 26.9124] }, // [lng, lat] — Jaipur
     },
+    // When that fix arrived. A driver flagged online whose last ping is old is
+    // not actually available, so every "live" query filters on this.
+    lastLocationAt: { type: Date, index: true },
+    heading: { type: Number }, // degrees, for pointing the car icon
+    speedKph: { type: Number },
     rating: { type: Number, default: 5, min: 1, max: 5 },
     ratingCount: { type: Number, default: 0 },
     completedRides: { type: Number, default: 0 },

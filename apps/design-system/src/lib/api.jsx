@@ -15,12 +15,26 @@ export function createApi(baseURL) {
     const headers = { 'Content-Type': 'application/json' };
     if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
-    const res = await fetch(`${baseURL}${path}`, {
-      method,
-      headers,
-      credentials: 'include',
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    // fetch only rejects when the request never got an answer — server down,
+    // wrong port, DNS, CORS, offline. Its own message ("Failed to fetch") ends
+    // up in front of the user, so say the useful thing instead.
+    let res;
+    try {
+      res = await fetch(`${baseURL}${path}`, {
+        method,
+        headers,
+        credentials: 'include',
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+    } catch {
+      const err = new Error(
+        navigator.onLine === false
+          ? 'You appear to be offline.'
+          : `Could not reach the server at ${baseURL}. Is the backend running?`
+      );
+      err.status = 0;
+      throw err;
+    }
 
     // Attempt a silent refresh once on 401.
     if (res.status === 401 && auth && !isRetry && path !== '/auth/refresh') {

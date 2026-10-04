@@ -108,3 +108,51 @@ export const addPenalty = catchAsync(async (req, res) => {
   notify(driver.user, { title: 'Penalty applied', body: `${req.body.reason} — ₹${req.body.amount}` });
   return ok(res, { driver });
 });
+
+// GET /admin/drivers/live — snapshot of everyone on the road right now.
+// The socket stream ("driver:moved") keeps the map moving between polls; this
+// is what the dashboard loads on open, and its fallback if the socket drops.
+const LIVE_FRESH_MS = 2 * 60 * 1000;
+
+export const liveDrivers = catchAsync(async (req, res) => {
+  const since = new Date(Date.now() - LIVE_FRESH_MS);
+  const drivers = await Driver.find({
+    isOnline: true,
+    lastLocationAt: { $gte: since },
+  })
+    .select('vehicle currentLocation heading speedKph rating completedRides lastLocationAt user verificationStatus')
+    .populate('user', 'name phone')
+    .limit(500)
+    .lean();
+
+  // Which of them are mid-trip, so ops can tell a busy car from a free one.
+  const onTrip = await Ride.find({
+    driver: { $in: drivers.map((d) => d._id) },
+    status: { $in: [RIDE_STATUS.CONFIRMED, RIDE_STATUS.ONGOING] },
+  })
+    .select('driver status destination')
+    .lean();
+  const byDriver = new Map(onTrip.map((r) => [String(r.driver), r]));
+
+  return ok(res, {
+    drivers: drivers.map((d) => {
+      const ride = byDriver.get(String(d._id));
+      return {
+        id: String(d._id),
+        name: d.user?.name || 'Driver',
+        phone: d.user?.phone,
+        vehicleType: d.vehicle?.type || 'sedan',
+        plate: d.vehicle?.plateNumber,
+        rating: d.rating,
+        lat: d.currentLocation?.coordinates?.[1],
+        lng: d.currentLocation?.coordinates?.[0],
+        heading: d.heading ?? null,
+        speedKph: d.speedKph ?? null,
+        lastLocationAt: d.lastLocationAt,
+        status: ride ? ride.status : 'idle',
+        headingTo: ride?.destination || null,
+      };
+    }),
+    at: new Date(),
+  });
+});

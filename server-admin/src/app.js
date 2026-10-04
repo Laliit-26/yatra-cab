@@ -6,6 +6,7 @@ import { adminConfig } from './config/loadEnv.js';
 import authRoutes from './modules/auth/adminAuthRoutes.js';
 import dashboardRoutes from './modules/dashboard/dashboardRoutes.js';
 import driverRoutes from './modules/drivers/driverAdminRoutes.js';
+import couponRoutes from './modules/coupons/couponAdminRoutes.js';
 import customerRoutes from './modules/customers/customerAdminRoutes.js';
 import bookingRoutes from './modules/bookings/bookingRoutes.js';
 import routeRoutes from './modules/routes/routeRoutes.js';
@@ -28,6 +29,7 @@ export function createAdminApp() {
   app.use('/api/admin/routes', routeRoutes);
   app.use('/api/admin/reports', reportRoutes);
   app.use('/api/admin/safety', safetyRoutes);
+  app.use('/api/admin/coupons', couponRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

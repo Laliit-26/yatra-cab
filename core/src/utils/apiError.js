@@ -1,6 +1,6 @@
 /**
  * Typed operational error. Anything thrown as an ApiError is a known,
- * client-facing condition (400/401/403/404/409). Everything else is treated
+ * client-facing condition (400/401/403/404/409/429). Everything else is treated
  * as an unexpected 500 by the central error handler.
  */
 export class ApiError extends Error {
@@ -26,5 +26,8 @@ export class ApiError extends Error {
   }
   static conflict(msg = 'Conflict') {
     return new ApiError(409, msg);
+  }
+  static tooMany(msg = 'Too many requests', details) {
+    return new ApiError(429, msg, details);
   }
 }

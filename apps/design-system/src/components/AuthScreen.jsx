@@ -5,6 +5,8 @@ import { Button } from './Button.jsx';
 import { Field, Input } from './Field.jsx';
 import { Segmented, Logo } from './Misc.jsx';
 import toast from 'react-hot-toast';
+import { useTranslations } from '../i18n/I18nProvider.jsx';
+import { LanguageSwitcher } from './LanguageSwitcher.jsx';
 
 /**
  * Shared auth experience for every portal: a gradient hero panel + a glass
@@ -21,6 +23,7 @@ import toast from 'react-hot-toast';
  *  - onAuthed(user, accessToken)
  */
 export function AuthScreen({ api, role, allowSignup = true, brand, hero, roleNoun = 'account', demoHint, onAuthed }) {
+  const t = useTranslations('Auth');
   const [mode, setMode] = useState(() =>
     typeof window !== 'undefined' &&
     (new URLSearchParams(window.location.search).get('ref') || sessionStorage.getItem('yc_ref'))
@@ -45,14 +48,14 @@ export function AuthScreen({ api, role, allowSignup = true, brand, hero, roleNou
 
   const requestOtp = async (e) => {
     e.preventDefault();
-    if (!/^\+?[0-9]{10,13}$/.test(phone)) return toast.error('Enter a valid phone number');
-    if (isSignup && !name.trim()) return toast.error('Please enter your name');
+    if (!/^\+?[0-9]{10,13}$/.test(phone)) return toast.error(t('invalidPhone'));
+    if (isSignup && !name.trim()) return toast.error(t('needName'));
     setBusy(true);
     try {
       const res = await api.post('/auth/request-otp', { phone, email: email || undefined });
       setDevOtp(res.devOtp || null);
       setStep('otp');
-      toast.success(res.message || 'OTP sent');
+      toast.success(res.message || t('otpSent'));
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -62,7 +65,7 @@ export function AuthScreen({ api, role, allowSignup = true, brand, hero, roleNou
 
   const verify = async (e) => {
     e.preventDefault();
-    if (!/^[0-9]{6}$/.test(code)) return toast.error('Enter the 6-digit OTP');
+    if (!/^[0-9]{6}$/.test(code)) return toast.error(t('needOtp'));
     setBusy(true);
     try {
       const body = { phone, code };
@@ -74,7 +77,7 @@ export function AuthScreen({ api, role, allowSignup = true, brand, hero, roleNou
       }
       const res = await api.post('/auth/verify-otp', body);
       await onAuthed(res.user, res.accessToken);
-      toast.success(`Welcome${res.user?.name ? `, ${res.user.name}` : ''}!`);
+      toast.success(`${t('welcome')}${res.user?.name ? `, ${res.user.name}` : ''}!`);
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -116,7 +119,7 @@ export function AuthScreen({ api, role, allowSignup = true, brand, hero, roleNou
           </div>
         </div>
         <p className="relative flex items-center gap-1.5 text-sm text-white/55">
-          <ShieldCheck size={14} /> Verified {roleNoun.toLowerCase()}s · masked calls · secure payments
+          <ShieldCheck size={14} /> {t('footer')}
         </p>
       </div>
 
@@ -128,14 +131,18 @@ export function AuthScreen({ api, role, allowSignup = true, brand, hero, roleNou
             <Logo mark={brand.mark} name={brand.name} tagline={brand.tagline} />
           </div>
 
+          <div className="mb-3 flex justify-end">
+            <LanguageSwitcher />
+          </div>
+
           <div className="rounded-3xl border border-white/60 bg-white/80 p-7 shadow-soft backdrop-blur">
             {step === 'form' ? (
               <form onSubmit={requestOtp} className="space-y-4">
                 <div>
                   <h2 className="font-display text-2xl font-bold text-ink-900">
-                    {allowSignup ? (isSignup ? 'Create your account' : 'Welcome back') : `${roleNoun} sign in`}
+                    {allowSignup ? (isSignup ? t('createAccount') : t('welcomeBack')) : `${roleNoun} sign in`}
                   </h2>
-                  <p className="mt-1 text-sm text-ink-500">We'll text a one-time code to verify you.</p>
+                  <p className="mt-1 text-sm text-ink-500">{t('otpHint')}</p>
                 </div>
 
                 {allowSignup && (
@@ -143,27 +150,27 @@ export function AuthScreen({ api, role, allowSignup = true, brand, hero, roleNou
                     className="w-full [&>button]:flex-1"
                     value={mode}
                     onChange={(m) => setMode(m)}
-                    options={[{ value: 'signin', label: 'Sign in' }, { value: 'signup', label: 'Create account' }]}
+                    options={[{ value: 'signin', label: t('signIn') }, { value: 'signup', label: t('createAccountTab') }]}
                   />
                 )}
 
                 {isSignup && (
-                  <Field label="Full name">
-                    <Input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+                  <Field label={t('fullName')}>
+                    <Input placeholder={t('namePlaceholder')} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
                   </Field>
                 )}
-                <Field label="Phone number">
+                <Field label={t('phone')}>
                   <Input inputMode="numeric" placeholder="9000000010" value={phone} onChange={(e) => setPhone(e.target.value)} autoFocus={!isSignup} />
                 </Field>
                 {isSignup && (
-                  <Field label="Email" hint="for receipts & OTP">
+                  <Field label={t('email')} hint={t('emailHint')}>
                     <Input type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                   </Field>
                 )}
                 {isSignup && role === 'customer' && (
-                  <Field label="Referral code" hint="optional">
+                  <Field label={t('referralCode')} hint={t('optional', {})}>
                     <Input
-                      placeholder="Friend's code"
+                      placeholder={t('referralPlaceholder')}
                       maxLength={12}
                       value={referralCode}
                       onChange={(e) => setReferralCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
@@ -173,25 +180,25 @@ export function AuthScreen({ api, role, allowSignup = true, brand, hero, roleNou
                 )}
 
                 <Button type="submit" className="w-full" size="lg" loading={busy} icon={ArrowRight}>
-                  {isSignup ? 'Create account' : 'Send OTP'}
+                  {isSignup ? t('createAccountTab') : t('sendOtp')}
                 </Button>
                 {demoHint && <p className="text-center text-xs text-ink-400">{demoHint}</p>}
               </form>
             ) : (
               <form onSubmit={verify} className="space-y-4">
                 <button type="button" onClick={() => setStep('form')} className="flex items-center gap-1 text-sm text-ink-500 transition-colors hover:text-ink-700">
-                  <ArrowLeft size={15} /> Back
+                  <ArrowLeft size={15} /> {t('back')}
                 </button>
                 <div>
-                  <h2 className="font-display text-2xl font-bold text-ink-900">Enter the code</h2>
-                  <p className="mt-1 text-sm text-ink-500">Sent to {phone}. Check your email or the server console.</p>
+                  <h2 className="font-display text-2xl font-bold text-ink-900">{t('enterCode')}</h2>
+                  <p className="mt-1 text-sm text-ink-500">{t('sentTo', { phone })}</p>
                 </div>
                 {devOtp && (
                   <div className="rounded-xl bg-accent-soft px-4 py-3 text-sm text-accent">
-                    Dev OTP: <span className="font-semibold tracking-[0.3em]">{devOtp}</span>
+                    {t('devOtp')} <span className="font-semibold tracking-[0.3em]">{devOtp}</span>
                   </div>
                 )}
-                <Field label="6-digit OTP">
+                <Field label={t('otpLabel')}>
                   <Input
                     inputMode="numeric"
                     maxLength={6}
@@ -202,7 +209,7 @@ export function AuthScreen({ api, role, allowSignup = true, brand, hero, roleNou
                     autoFocus
                   />
                 </Field>
-                <Button type="submit" className="w-full" size="lg" loading={busy}>Verify &amp; continue</Button>
+                <Button type="submit" className="w-full" size="lg" loading={busy}>{t('verify')}</Button>
               </form>
             )}
           </div>

@@ -25,7 +25,7 @@ export default function Login() {
       roleNoun="Admin"
       brand={{ mark: ShieldCheck, name: 'YatraCab Ops', tagline: 'Admin console' }}
       hero={HERO}
-      demoHint="Demo admin: phone 9000000001 · OTP 123456"
+      demoHint="Demo admin: 9000000001 — the code appears on the next screen"
       onAuthed={async (user, token) => {
         await login(user, token);
         navigate('/');

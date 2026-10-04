@@ -21,6 +21,7 @@ import {
   placeBid,
   listMyBids,
   listMyRides,
+  sendRideOtp,
   startRide,
   completeRide,
   rateCustomer,
@@ -47,6 +48,7 @@ router.post('/rides/:id/bid', validate(bidSchema), placeBid);
 router.get('/bids', listMyBids);
 
 router.get('/rides', listMyRides);
+router.post('/rides/:id/otp/:phase/send', sendRideOtp);
 router.patch('/rides/:id/start', startRide);
 router.patch('/rides/:id/complete', completeRide);
 router.post('/rides/:id/rate', validate(rateSchema), rateCustomer);

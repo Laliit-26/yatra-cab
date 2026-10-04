@@ -10,6 +10,7 @@ import {
   payDriverRecurringCommission,
   payCustomerRideCommission,
   catchAsync,
+  env,
   ApiError,
   ok,
   created,
@@ -223,6 +224,60 @@ export const listMyRides = catchAsync(async (req, res) => {
     Ride.countDocuments(filter),
   ]);
   return ok(res, { rides, meta: pageMeta(page, limit, total) });
+});
+
+// POST /driver/rides/:id/otp/:phase/send
+//
+// The driver asks for the checkpoint code; the rider receives it and reads it
+// back. Codes are normally minted when payment confirms, but a ride confirmed
+// off a bid never goes through that path, so mint on first send instead of
+// leaving the checkpoint silently disabled.
+const OTP_RESEND_MS = 60 * 1000;
+const sixDigits = () => String(Math.floor(100000 + Math.random() * 900000));
+
+export const sendRideOtp = catchAsync(async (req, res) => {
+  const phase = req.params.phase;
+  if (!['start', 'end'].includes(phase)) throw ApiError.badRequest('Unknown verification step');
+
+  const driver = await myDriver(req);
+  const ride = await Ride.findOne({ _id: req.params.id, driver: driver._id });
+  if (!ride) throw ApiError.notFound('Ride not found');
+
+  const allowed = phase === 'start' ? [RIDE_STATUS.CONFIRMED] : [RIDE_STATUS.ONGOING, RIDE_STATUS.CONFIRMED];
+  if (!allowed.includes(ride.status)) throw ApiError.badRequest('This ride is not at that step');
+
+  ride.verification = ride.verification || {};
+  const slot = ride.verification[phase] || (ride.verification[phase] = {});
+
+  // Enforced here, not just in the UI: a countdown in the driver's app stops
+  // nobody who can call the endpoint directly, and every send pings the rider.
+  const since = slot.sentAt ? Date.now() - new Date(slot.sentAt).getTime() : Infinity;
+  if (since < OTP_RESEND_MS) {
+    const retryAfter = Math.ceil((OTP_RESEND_MS - since) / 1000);
+    throw ApiError.tooMany(`Please wait ${retryAfter}s before asking again`, { retryAfter });
+  }
+
+  if (!slot.code) slot.code = sixDigits();
+  slot.sentAt = new Date();
+  ride.markModified('verification');
+  await ride.save();
+
+  const label = phase === 'start' ? 'start' : 'drop-off';
+  await notify(ride.customer, {
+    title: `Your ${label} code`,
+    body: `Share ${slot.code} with your driver to ${phase === 'start' ? 'begin' : 'close'} this trip.`,
+    data: { rideId: String(ride._id), phase },
+  });
+  emitToUser(String(ride.customer), 'ride:otp', { rideId: String(ride._id), phase, code: slot.code });
+
+  // Same bargain otpService strikes for login: with no SMS transport wired up,
+  // dev and demo builds hand the code back so the flow is testable end to end.
+  const expose = env.otp.demoMode || !env.isProd;
+  return ok(res, {
+    sentAt: slot.sentAt,
+    retryAfter: Math.ceil(OTP_RESEND_MS / 1000),
+    ...(expose ? { devCode: slot.code } : {}),
+  });
 });
 
 // PATCH /driver/rides/:id/start

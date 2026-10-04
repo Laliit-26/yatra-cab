@@ -6,7 +6,9 @@ const base =
 
 export function Label({ children, htmlFor, hint }) {
   return (
-    <label htmlFor={htmlFor} className="mb-1.5 flex items-center justify-between text-sm font-medium text-ink-700">
+    // flex-wrap, so in a narrow column the hint moves to its own line rather
+    // than forcing the label to wrap mid-phrase ("Number of / coupons").
+    <label htmlFor={htmlFor} className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-2 text-sm font-medium leading-tight text-ink-700">
       <span>{children}</span>
       {hint && <span className="text-xs font-normal text-ink-400">{hint}</span>}
     </label>

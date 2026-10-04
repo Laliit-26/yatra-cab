@@ -3,11 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card, CardBody, Button, Badge, Modal, Field, Input, Textarea, PageHeader,
   QueryBoundary, LoadingScreen, EmptyState, toast, inr, formatDateTime, timeUntil, vehicleLabel,
+  useTranslations,
 } from '@yatracab/ui';
 import { Gavel, MapPin, Users, CalendarClock, TrendingDown, Info, CarFront } from 'lucide-react';
 import { api } from '../api.js';
 
 export default function Alerts() {
+  const t = useTranslations('Driver');
   const qc = useQueryClient();
   const [selected, setSelected] = useState(null);
   const [amount, setAmount] = useState('');
@@ -22,7 +24,7 @@ export default function Alerts() {
   const bid = useMutation({
     mutationFn: () => api.post(`/driver/rides/${selected._id}/bid`, { amount: Number(amount), note: note || undefined }),
     onSuccess: () => {
-      toast.success('Quote submitted!');
+      toast.success(t('quoteSubmitted'));
       setSelected(null); setAmount(''); setNote('');
       qc.invalidateQueries({ queryKey: ['driver-alerts'] });
       qc.invalidateQueries({ queryKey: ['driver-bids'] });
@@ -44,13 +46,13 @@ export default function Alerts() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader icon={Gavel} title="Ride Alerts" subtitle="Open trips you can bid on. Quotes are blind — other drivers can't see yours." />
+      <PageHeader icon={Gavel} title={t('alertsTitle')} subtitle={t('alertsSubtitle')} />
 
       <QueryBoundary
         query={query}
         loading={<LoadingScreen label="Finding open alerts…" />}
         isEmpty={(d) => !d?.blocked && !d?.alerts?.length}
-        empty={<EmptyState icon={Gavel} title="No open alerts right now" message="You'll see trips here for the routes and vehicle type you serve. Make sure you're online." />}
+        empty={<EmptyState icon={Gavel} title={t('noAlerts')} message={t('noAlertsText')} />}
       >
         {(data) => (data.blocked ? (
           <Card>
@@ -59,10 +61,9 @@ export default function Alerts() {
                 <CarFront size={20} />
               </span>
               <div>
-                <p className="font-semibold text-ink-900">You're on a trip</p>
+                <p className="font-semibold text-ink-900">{t('onTrip')}</p>
                 <p className="mt-0.5 text-sm text-ink-500">
-                  New ride alerts are hidden until you complete your current ride
-                  {data.activeRide?.drop?.address ? ` to ${data.activeRide.drop.address}` : ''}. Finish it to start bidding again.
+                  {t('onTripText', { dest: data.activeRide?.drop?.address ? ` to ${data.activeRide.drop.address}` : '' })}
                 </p>
               </div>
             </CardBody>
@@ -100,12 +101,12 @@ export default function Alerts() {
       <Modal
         open={!!selected}
         onClose={() => setSelected(null)}
-        title="Place your quote"
+        title={t('placeQuote')}
         subtitle={selected ? `${selected.destination || selected.route?.destination} · ${vehicleLabel(selected.vehicleType)}` : ''}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setSelected(null)}>Cancel</Button>
-            <Button loading={bid.isPending} onClick={submit}>Submit quote</Button>
+            <Button variant="ghost" onClick={() => setSelected(null)}>{t('cancel')}</Button>
+            <Button loading={bid.isPending} onClick={submit}>{t('submitQuote')}</Button>
           </>
         }
       >
@@ -113,15 +114,15 @@ export default function Alerts() {
           <div className="space-y-4">
             <div className="flex items-center gap-2 rounded-xl bg-accent-soft p-3 text-sm text-accent">
               <TrendingDown size={16} />
-              Minimum (floor) price: <span className="font-semibold">{inr(selected.route?.floorPrice || 0)}</span>
+              {t('floorPrice')} <span className="font-semibold">{inr(selected.route?.floorPrice || 0)}</span>
             </div>
-            <Field label="Your price (₹)" hint="cash from customer">
+            <Field label={t('yourPrice')} hint={t('yourPriceHint')}>
               <Input type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 3200" autoFocus />
             </Field>
-            <Field label="Note to customer" hint="optional">
-              <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="AC SUV, experienced on this route, water bottles included…" />
+            <Field label={t('noteToCustomer')} hint={t('optional')}>
+              <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('notePlaceholder')} />
             </Field>
-            <p className="text-xs text-ink-400">The customer pays a Booking & Safety Fee on your quote online; you collect the fare in cash.</p>
+            <p className="text-xs text-ink-400">{t('feeNote')}</p>
           </div>
         )}
       </Modal>

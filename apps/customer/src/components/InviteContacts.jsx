@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardHeader, CardBody, Button, Input, Badge, Avatar, EmptyState, toast } from '@yatracab/ui';
+import { Card, CardHeader, CardBody, Button, Input, Badge, Avatar, EmptyState, toast, useTranslations } from '@yatracab/ui';
 import { UserPlus, Contact as ContactIcon, Trash2, Send, Info } from 'lucide-react';
 import { api } from '../api.js';
 
@@ -10,6 +10,7 @@ import { api } from '../api.js';
 const pickerSupported = () => typeof navigator !== 'undefined' && 'contacts' in navigator && 'ContactsManager' in window;
 
 export function InviteContacts() {
+  const t = useTranslations('Invite');
   const qc = useQueryClient();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -41,7 +42,7 @@ export function InviteContacts() {
       const contacts = picked
         .filter((c) => c.tel?.length)
         .map((c) => ({ name: c.name?.[0] || '', phone: c.tel[0], source: 'picker' }));
-      if (!contacts.length) return toast.error('Those entries had no phone number');
+      if (!contacts.length) return toast.error(t('noPhoneInEntry'));
       save.mutate(contacts);
     } catch {
       // The user dismissed the sheet — not an error worth surfacing.
@@ -49,13 +50,13 @@ export function InviteContacts() {
   };
 
   const addManual = () => {
-    if (!phone.trim()) return toast.error('Enter a phone number');
+    if (!phone.trim()) return toast.error(t('needPhone'));
     save.mutate([{ name: name.trim(), phone: phone.trim(), source: 'manual' }]);
   };
 
   return (
     <Card>
-      <CardHeader title="Invite friends" subtitle="Pick who you want to invite — nothing is uploaded on its own." icon={UserPlus} />
+      <CardHeader title={t('title')} subtitle={t('subtitle')} icon={UserPlus} />
       <CardBody className="space-y-4">
         {supported ? (
           <Button variant="soft" icon={ContactIcon} onClick={pickFromPhone} disabled={save.isPending} className="w-full">
@@ -64,18 +65,18 @@ export function InviteContacts() {
         ) : (
           <div className="flex items-start gap-2 rounded-xl bg-ink-50 p-3 text-xs text-ink-500">
             <Info size={14} className="mt-0.5 shrink-0" />
-            <p>Your browser doesn't offer a contact picker — add numbers below. (Chrome on Android does.)</p>
+            <p>{t('noPicker')}</p>
           </div>
         )}
 
         <div className="flex gap-2">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" className="flex-1" />
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="flex-1" />
-          <Button icon={Send} onClick={addManual} disabled={save.isPending}>Add</Button>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('namePlaceholder')} className="flex-1" />
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('phonePlaceholder')} className="flex-1" />
+          <Button icon={Send} onClick={addManual} disabled={save.isPending}>{t('add')}</Button>
         </div>
 
         {!listQ.data?.length ? (
-          <EmptyState icon={UserPlus} title="No one yet" message="Add a friend to invite them to YatraCab." />
+          <EmptyState icon={UserPlus} title={t('noneYet')} message={t('noneYetText')} />
         ) : (
           <div className="space-y-2">
             {listQ.data.map((c) => (
@@ -89,7 +90,7 @@ export function InviteContacts() {
                 <button
                   type="button"
                   onClick={() => remove.mutate(c._id)}
-                  title="Remove"
+                  title={t('remove')}
                   className="text-ink-300 transition-colors hover:text-danger"
                 >
                   <Trash2 size={15} />
