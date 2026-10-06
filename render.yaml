@@ -20,10 +20,14 @@ services:
         value: mock
       # DEMO_OTP must NOT be set in production — it bypasses OTP verification.
       # Use a real SMTP (GMAIL_USER + GMAIL_APP_PASSWORD) or a paid OTP provider.
-      # SECURITY: AUTO_SEED creates demo accounts (including an ops admin) on first
-      # boot. Remove or scope it once the real admin account exists in the database.
+      # SECURITY: AUTO_SEED creates demo accounts (including an ops admin whose
+      # OTP is the fixed demo code) on first boot. Default it off — seed a fresh
+      # database deliberately instead:
+      #   MONGODB_URI="<atlas uri>" SEED_DEMO_EMAIL="you@example.com" npm run seed
+      # Pass a real SEED_DEMO_EMAIL or the admin lands on admin@yatracab.test and
+      # can never receive an OTP.
       - key: AUTO_SEED
-        value: "true"
+        value: "false"
       - key: MONGODB_URI          # mongodb+srv://... (Atlas)
         sync: false
       - key: JWT_ACCESS_SECRET
