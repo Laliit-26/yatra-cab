@@ -62,6 +62,18 @@ export const env = {
     get ttlMs() {
       return num(process.env.OTP_TTL_MS, 5 * 60 * 1000);
     },
+    // Phones whose OTP is returned in the API response and shown on the sign-in
+    // screen, so testers need no inbox. Unlike DEMO_OTP this is allowed in
+    // production, because it is an explicit list rather than a blanket switch —
+    // but every number on it is publicly takeover-able: anyone who knows it can
+    // read the code and sign in. Seeded demo accounts only; empty it before
+    // real users exist.
+    get demoPhones() {
+      return (process.env.DEMO_LOGIN_PHONES || '')
+        .split(',')
+        .map((p) => p.replace(/[^0-9]/g, '').slice(-10))
+        .filter(Boolean);
+    },
   },
   payment: {
     get provider() {

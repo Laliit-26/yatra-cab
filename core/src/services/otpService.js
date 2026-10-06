@@ -39,10 +39,14 @@ export async function requestOtp(phone, { email, purpose = 'login' } = {}) {
     destEmail = user?.email;
   }
 
+  // Allowlisted test numbers show their code on the sign-in screen, so there is
+  // no point attempting delivery for them.
+  const isDemoPhone = env.otp.demoPhones.includes(String(phone || '').replace(/[^0-9]/g, '').slice(-10));
+
   let delivered = false;
   // In demo mode we don't try to email at all (the host may block SMTP) — the
   // code is returned in the response and shown on screen instead.
-  if (!env.otp.demoMode && destEmail) {
+  if (!env.otp.demoMode && !isDemoPhone && destEmail) {
     const res = await sendMail({
       to: destEmail,
       subject: `${env.otp.fromName} verification code: ${code}`,
@@ -52,12 +56,16 @@ export async function requestOtp(phone, { email, purpose = 'login' } = {}) {
       html: otpEmailHtml(code),
     });
     delivered = res.delivered;
-  } else if (!env.otp.demoMode) {
+  } else if (!env.otp.demoMode && !isDemoPhone) {
     logger.warn(`[otp] No email on file for ${phone}; OTP not emailed.`);
   }
 
-  // Surface the code when in demo mode, or (in dev) when it wasn't delivered.
-  const exposeDev = env.otp.demoMode || (!delivered && !env.isProd);
+  // Surface the code in demo mode, for an allowlisted test number, or (in dev)
+  // when delivery failed.
+  const exposeDev = env.otp.demoMode || isDemoPhone || (!delivered && !env.isProd);
+  if (isDemoPhone && env.isProd) {
+    logger.warn(`[otp] ${phone} is on DEMO_LOGIN_PHONES — code returned in the response, account is publicly accessible.`);
+  }
   if (exposeDev) logger.info(`[otp:dev] ***${String(phone).slice(-4)} → ${code}`);
 
   return { delivered, channel: env.otp.channel, ...(exposeDev ? { devOtp: code } : {}) };
